@@ -53,7 +53,6 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## api todo
 
-1. 流式传输
+1. 流式传输 (SSE?)
 2. redis
 3. mysql
-4. SSE、
