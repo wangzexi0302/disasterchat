@@ -1,6 +1,6 @@
 # DisasterChat LLM后端
 
-本项目集成FastAPI与Ollama，提供LLM服务的后端服务器。
+本项目集成FastAPI与Ollama，提供支持Agent和函数调用功能的LLM服务后端。
 
 ## 设置
 
@@ -30,12 +30,25 @@
    poetry install
    ```
 
+## 功能特点
+
+- **Agent形式的LLM交互**：模型作为Agent响应用户查询
+- **函数调用**：支持工具函数调用，能够获取外部数据
+- **流式输出**：提供流式API以实现实时响应
+- **内置工具**：支持天气查询、灾害信息查询等功能
+
 ## 运行服务器
 
 确保已激活conda环境 (disasterchat)，然后执行:
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+## API端点
+
+- **POST /chat**：聊天API，支持函数调用
+- **POST /chat/stream**：流式聊天API
+- **GET /health**：健康检查端点
 
 ## 测试
 
@@ -48,5 +61,5 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    python test/test_api.py
    ```
 
-测试脚本将检查API的健康检查端点和聊天功能，并显示响应结果。
+测试脚本将检查API的健康检查端点、聊天功能和函数调用功能，并显示响应结果。
 

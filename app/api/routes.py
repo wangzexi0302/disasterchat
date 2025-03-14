@@ -2,39 +2,46 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 import json
 from app.api.models import ChatRequest, ChatResponse
-from app.services.llm_service import get_llm_response, get_llm_stream_response
+from app.services.agent_service import AgentService
+from app.config import settings
 
-router = APIRouter(prefix="/api", tags=["llm"])
+router = APIRouter(tags=["llm"])
+
+# 创建Agent服务实例
+agent_service = AgentService()
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(request: ChatRequest):
     """
-    与LLM模型交互的端点
+    与LLM Agent交互的端点
     """
     try:
-        response = get_llm_response(request.prompt, request.model)
-        return ChatResponse(response=response)
+        model = request.model or settings.default_model
+        response = agent_service.run(
+            messages=[msg.dict() for msg in request.messages], 
+            model=model
+        )
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest):
     """
-    与LLM模型交互的流式端点
+    与LLM Agent交互的流式端点
     """
     try:
+        model = request.model or settings.default_model
+        
         async def generate():
-            # 用于跟踪是否是最后一个响应
-            is_last = False
-            
-            # 从生成器获取流式响应
-            for text in get_llm_stream_response(request.prompt, request.model):
-                is_last = False
-                yield f"data: {json.dumps({'text': text, 'done': is_last})}\n\n"
+            for chunk in agent_service.run_stream(
+                messages=[msg.dict() for msg in request.messages],
+                model=model
+            ):
+                yield f"data: {json.dumps(chunk)}\n\n"
             
             # 标记流式输出结束
-            is_last = True
-            yield f"data: {json.dumps({'text': '', 'done': is_last})}\n\n"
+            yield f"data: {json.dumps({'done': True})}\n\n"
 
         return StreamingResponse(
             generate(),
@@ -42,3 +49,8 @@ async def chat_stream_endpoint(request: ChatRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/health")
+async def health_check():
+    """健康检查端点"""
+    return {"status": "ok"}

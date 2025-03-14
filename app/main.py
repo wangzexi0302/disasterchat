@@ -4,8 +4,8 @@ from app.api.routes import router
 import uvicorn
 
 app = FastAPI(
-    title="DisasterChat LLM API",
-    description="FastAPI后端与Ollama集成提供LLM服务",
+    title="DisasterChat Agent API",
+    description="FastAPI后端与Ollama集成提供LLM Agent服务，支持函数调用",
     version="0.1.0"
 )
 
@@ -18,6 +18,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 移除API前缀，使路由直接在根路径下可访问
 app.include_router(router)
 
 if __name__ == "__main__":
