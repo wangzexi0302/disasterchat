@@ -63,3 +63,9 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 测试脚本将检查API的健康检查端点、聊天功能和函数调用功能，并显示响应结果。
 
+
+## api todo
+
+1. 流式传输 (SSE?)
+2. redis
+3. mysql
