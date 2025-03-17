@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 import json
 from app.api.models import ChatRequest, ChatResponse
-from app.services.agent_service import AgentService
+from app.agents.agent_service import AgentService
 from app.config import settings
 
 router = APIRouter(tags=["llm"])

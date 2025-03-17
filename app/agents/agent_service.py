@@ -1,6 +1,6 @@
 import ollama
 import json
-from typing import List, Dict, Any, Tuple, Generator
+from typing import List, Dict, Any, Generator
 from app.tools import available_tools, Tool
 
 class AgentService:
