@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 
 class Message(BaseModel):
     role: str = Field(..., description="消息角色，如user或assistant")
@@ -28,3 +28,17 @@ class ChatResponse(BaseModel):
 class StreamResponse(BaseModel):
     text: str = Field(..., description="LLM的流式响应片段")
     done: bool = Field(False, description="是否是最后一个片段")
+
+# 添加多模态内容项的模型
+class ImageContent(BaseModel):
+    type: str = "image"
+    image_data: str  # base64编码的图像数据
+
+class TextContent(BaseModel):
+    type: str = "text"
+    text: str
+
+# 更新ChatMessage支持多模态内容
+class VLChatMessage(BaseModel):
+    role: str
+    content: Union[str, List[Union[TextContent, ImageContent]]]

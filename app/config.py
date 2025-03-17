@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"  # 仍然保留，以便自定义Ollama服务地址
     default_model: str = "qwen2.5"
     
+    # 多模态模型配置
+    default_vl_model: str = "llava"
+    
     class Config:
         env_file = ".env"
         case_sensitive = False
