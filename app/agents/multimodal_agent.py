@@ -2,11 +2,9 @@ import base64
 import os
 import tempfile
 import logging
-from typing import Dict, List, Generator, Optional, Any, Union
-import json
+from typing import Dict, List, Generator, Optional, Any
 import ollama
-from app.config import settings
-from app.api.models import ImageContent, TextContent, AssistantMessage
+from app.api.models import AssistantMessage
 
 logger = logging.getLogger(__name__)
 
@@ -79,17 +77,30 @@ class MultiModalAgent:
             # 检查是否包含图像
             if isinstance(content, list):
                 logger.debug(f"消息 {i+1} 包含多模态内容")
-                new_content = []
+                text_parts = []
+                image_paths = []
+                
                 for item in content:
                     if isinstance(item, dict) and item.get("type") == "image":
                         logger.info("处理图像内容")
                         image_path = self._process_image(item.get("image_data", ""))
-                        new_content.append({"type": "image", "image_path": image_path})
+                        image_paths.append(image_path)
                         temp_files.append(image_path)
                     elif isinstance(item, dict) and item.get("type") == "text":
                         logger.debug("处理文本内容")
-                        new_content.append({"type": "text", "text": item.get("text", "")})
-                processed_messages.append({"role": role, "content": new_content})
+                        text_parts.append(item.get("text", ""))
+                
+                # 构造新的消息格式，使用新的API结构
+                processed_msg = {
+                    "role": role,
+                    "content": " ".join(text_parts) if text_parts else "",
+                }
+                
+                # 如果有图片，添加images字段
+                if image_paths:
+                    processed_msg["images"] = image_paths
+                
+                processed_messages.append(processed_msg)
             else:
                 logger.debug(f"消息 {i+1} 是纯文本内容")
                 processed_messages.append({"role": role, "content": content})
