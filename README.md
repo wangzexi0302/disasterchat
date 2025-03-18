@@ -11,6 +11,7 @@
     ```bash
     ollama pull llama3.2 #英文模型
     ollama pull qwen2.5 #中文
+    ollama pull llava # 多模态模型
     ```
 
 2. 使用Conda创建并激活虚拟环境:
