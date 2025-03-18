@@ -11,6 +11,7 @@
     ```bash
     ollama pull llama3.2 #英文模型
     ollama pull qwen2.5 #中文
+    ollama pull llava # 多模态模型
     ```
 
 2. 使用Conda创建并激活虚拟环境:
@@ -19,15 +20,16 @@
    conda activate disasterchat
    ```
 
-3. 安装Poetry:
+3. 使用Poetry来管理包环境:
    ```bash
    pip install poetry
+      # 在项目根目录下执行
+   poetry install
    ```
 
-4. 使用Poetry安装项目依赖:
+4. 或者直接pip install:
    ```bash
-   # 在项目根目录下执行
-   poetry install
+   pip install -r requirements.txt
    ```
 
 ## 功能特点

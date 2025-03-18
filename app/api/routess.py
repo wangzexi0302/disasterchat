@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, HTTPException,BackgroundTasks
+from fastapi import APIRouter, Request, HTTPException,BackgroundTasks,Depends
 from fastapi.responses import StreamingResponse
 import uuid
 import time
@@ -61,41 +61,28 @@ class PromptsResponse(BaseModel):
 @router.post("/chat/new_session", response_model=NewSessionResponse)
 async def new_session(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     session_id = str(uuid.uuid4())
-    # 建议使用计数器来生成会话名称，避免使用 dbsize
     session_number = redis_client.incr("session_counter")
     session_name = f"会话 {session_number}"
     session_key = f"session:{session_id}"
 
-    # 将数据存入 Redis
     redis_client.hset(session_key, "sessionId", session_id)
     redis_client.hset(session_key, "name", session_name)
 
-    # 定义一个异步任务函数，用于将数据存入 MySQL
     def save_session_to_mysql():
         try:
-            # 创建一个 DBSession 实例
             new_session = DBSession(id=session_id, name=session_name)
-            # 将新会话添加到数据库会话中
             db.add(new_session)
-            # 提交数据库会话，将数据写入数据库
             db.commit()
-            # 刷新会话，确保获取到最新的数据库状态
             db.refresh(new_session)
         except Exception as e:
-            # 发生异常时回滚数据库会话
             db.rollback()
             print(f"保存会话到 MySQL 时出错: {e}")
         finally:
-            # 关闭数据库会话
             db.close()
 
-    # 将保存会话到 MySQL 的任务添加到后台任务中
     background_tasks.add_task(save_session_to_mysql)
 
-    return {
-        "status": "success",
-        "session_id": session_id
-    }
+    return NewSessionResponse(status="success", session_id=session_id)
 
 # 1. 获取历史对话列表
 @router.post("/chat/history_list", response_model=HistoryListResponse)
