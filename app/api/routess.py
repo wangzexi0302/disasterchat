@@ -1,206 +1,306 @@
-from fastapi import APIRouter, Request, HTTPException,BackgroundTasks,Depends
-from fastapi.responses import StreamingResponse
-import uuid
-import time
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from sqlalchemy.orm import Session
+from app.api.database.db_setup import get_db
+from app.api.database.models import DBSession, ChatMessage, Image, MessageImage, PromptTemplate
+from pydantic import BaseModel
 import redis
 import json
+import uuid
 import asyncio
-from pydantic import BaseModel
-from app.api.database.db_setup import get_db  # 从数据库配置文件中导入获取数据库会话的函数
-from app.api.database.models import DBSession  # 从数据库模型文件中导入会话模型
-from sqlalchemy.orm import Session
+from fastapi.responses import StreamingResponse
 
-# 创建路由
-router = APIRouter(prefix="/api", tags=["chat"])
-
-# 连接 Redis
+# 初始化 Redis 客户端，用于缓存数据和实现异步操作
 redis_client = redis.Redis(host='localhost', port=6379, db=0)
 
-
-# 定义请求和响应模型
-
-# 获取历史对话列表响应模型
-class HistoryListResponse(BaseModel):
-    data: dict
+# 创建一个 FastAPI 的路由实例，设置路由前缀和标签
+router = APIRouter(prefix="/api", tags=["chat"])
 
 
-# 获取历史详细对话响应模型
-class HistoryDetailResponse(BaseModel):
-    data: dict
+# ======================
+# 1. 公共模型定义
+# 这里定义了各个接口所使用的请求和响应数据模型，使用 Pydantic 进行数据验证
+# ======================
 
-
-# 上传图片请求模型
-class UploadImageRequest(BaseModel):
-    image_list: list
-
-
-# 上传图片响应模型
-class UploadImageResponse(BaseModel):
-    status: str
-    message: str = None
-
-
-# 开启新会话响应模型
+# 开启新会话接口的响应模型
 class NewSessionResponse(BaseModel):
-    status: str
+    # 操作状态，默认为成功
+    status: str = "success"
+    # 新创建的会话 ID
     session_id: str
 
 
-# 发送消息请求模型
-class SendMessageRequest(BaseModel):
-    sessionId: int
-    message: str
-
-
-# 预设提示响应模型
-class PromptsResponse(BaseModel):
+# 获取历史对话列表接口的响应模型
+class HistoryListResponse(BaseModel):
+    # 包含历史对话列表的数据
     data: dict
 
 
-# 4. 开启新会话
+# 发送消息接口的请求模型
+class SendMessageRequest(BaseModel):
+    # 会话 ID
+    sessionId: str
+    # 消息内容
+    message: str
+    # 关联的图片 ID 列表，默认为空列表
+    image_ids: list[str] = []
+
+
+# 获取历史详细对话接口的响应模型
+class HistoryDetailResponse(BaseModel):
+    # 包含历史详细对话的数据
+    data: dict
+
+
+# 上传图片接口的响应模型
+class UploadImageResponse(BaseModel):
+    # 操作状态
+    status: str
+    # 操作消息，可选
+    message: str = None
+    # 上传成功的图片 ID 列表
+    image_ids: list[str] = []
+
+
+# 预设提示接口的响应模型
+class PromptsResponse(BaseModel):
+    # 包含预设提示模板的数据
+    data: dict
+
+
+# ======================
+# 2. 核心接口实现
+# 这里定义了各个接口的具体实现逻辑
+# ======================
+
+# === 开启新会话接口 ===
 @router.post("/chat/new_session", response_model=NewSessionResponse)
-async def new_session(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def new_session(
+    background_tasks: BackgroundTasks,  # 用于添加后台任务，实现异步操作
+    db: Session = Depends(get_db)  # 依赖注入 SQLAlchemy 的数据库会话
+):
+    # 生成一个唯一的会话 ID
     session_id = str(uuid.uuid4())
+
+    # 使用 Redis 的原子计数器生成会话名称，确保名称的唯一性
     session_number = redis_client.incr("session_counter")
     session_name = f"会话 {session_number}"
+
+    # 将会话信息写入 Redis
     session_key = f"session:{session_id}"
+    redis_client.hset(session_key, mapping={
+        "sessionId": session_id,
+        "name": session_name
+    })
 
-    redis_client.hset(session_key, "sessionId", session_id)
-    redis_client.hset(session_key, "name", session_name)
-
-    def save_session_to_mysql():
+    # 定义一个异步写入 MySQL 的函数
+    def save_to_mysql():
         try:
-            new_session = DBSession(id=session_id, name=session_name)
-            db.add(new_session)
+            # 创建一个新的会话记录
+            db_session = DBSession(
+                id=session_id,
+                name=session_name
+            )
+            # 将新会话记录添加到数据库会话中
+            db.add(db_session)
+            # 提交数据库事务
             db.commit()
-            db.refresh(new_session)
         except Exception as e:
+            # 若出现异常，回滚数据库事务
             db.rollback()
-            print(f"保存会话到 MySQL 时出错: {e}")
+            # 抛出 HTTP 异常，返回 500 错误
+            raise HTTPException(500, detail="数据库写入失败")
         finally:
+            # 关闭数据库会话
             db.close()
 
-    background_tasks.add_task(save_session_to_mysql)
+    # 将异步写入 MySQL 的任务添加到后台任务中
+    background_tasks.add_task(save_to_mysql)
 
-    return NewSessionResponse(status="success", session_id=session_id)
+    # 返回包含新会话 ID 的响应
+    return {"session_id": session_id}
 
-# 1. 获取历史对话列表
+
+# === 获取历史对话列表 ===
 @router.post("/chat/history_list", response_model=HistoryListResponse)
-async def get_history_list():
-    sessions = []
-    # 获取所有会话 ID
-    session_keys = redis_client.keys('session:*')
-    for key in session_keys:
-        session_data = redis_client.hgetall(key)
-        session = {
-            "sessionId": session_data[b'sessionId'].decode('utf-8'),
-            "name": session_data[b'name'].decode('utf-8'),
-            "content": ""
-        }
-        sessions.append(session)
-    return {
-        "data": {
-            "templates": sessions
-        }
-    }
+async def get_history_list(db: Session = Depends(get_db)):
+    # 尝试从 Redis 缓存中获取历史对话列表
+    cached_sessions = redis_client.get("history_sessions")
+    if cached_sessions:
+        # 若缓存存在，直接返回缓存数据
+        return {"data": {"templates": json.loads(cached_sessions)}}
+
+    # 若缓存不存在，从 MySQL 数据库中查询所有会话记录
+    db_sessions = db.query(DBSession).all()
+    # 处理查询结果，将其转换为需要的格式
+    sessions = [
+        {"sessionId": s.id, "name": s.name, "content": ""}
+        for s in db_sessions
+    ]
+
+    # 将查询结果更新到 Redis 缓存中，并设置缓存过期时间为 1 小时
+    redis_client.set("history_sessions", json.dumps(sessions), ex=3600)
+    # 返回包含历史对话列表的响应
+    return {"data": {"templates": sessions}}
 
 
-# 2. 获取历史详细对话接口
-@router.post("/chat/history_detail", response_model=HistoryDetailResponse)
-async def get_history_detail(request: Request):
-    data = await request.json()
-    session_id = data.get('sessionId')
-    message_key = f"messages:{session_id}"
-    messages = []
-    if redis_client.exists(message_key):
-        message_list = redis_client.lrange(message_key, 0, -1)
-        for msg in message_list:
-            messages.append(json.loads(msg.decode('utf-8')))
-    return {
-        "data": {
-            "messages": messages
-        }
-    }
-
-
-# 3. 上传图片接口
-@router.post("/chat/upload_image", response_model=UploadImageResponse)
-async def upload_image(request: UploadImageRequest):
-    try:
-        image_list = request.image_list
-        # 这里可以添加图片保存逻辑，例如保存到本地或云存储
-        for image_info in image_list:
-            image_type = image_info.get('type')
-            image = image_info.get('image')
-            # 模拟保存成功
-        return {"status": "success"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-
-# 5. 发送消息接口
+# === 发送消息接口 ===
 @router.post("/chat/send")
-async def send_message(request: SendMessageRequest):
-    session_id = request.sessionId
-    message = request.message
+async def send_message(
+    request: SendMessageRequest,  # 接收发送消息的请求数据
+    db: Session = Depends(get_db)  # 依赖注入 SQLAlchemy 的数据库会话
+):
+    # 验证会话是否存在于 Redis 中
+    if not redis_client.exists(f"session:{request.sessionId}"):
+        # 若会话不存在，抛出 HTTP 异常，返回 400 错误
+        raise HTTPException(400, "会话不存在")
 
-    session_key = f"session:{session_id}"
-    if not redis_client.exists(session_key):
-        raise HTTPException(status_code=400, detail="Invalid session ID")
-
-    user_message = {
+    # 构建用户消息的字典
+    message_key = f"messages:{request.sessionId}"
+    user_msg = {
         "role": "user",
-        "content": message,
-        "attachments": []
+        "content": request.message,
+        "image_ids": request.image_ids
     }
-    message_key = f"messages:{session_id}"
-    redis_client.rpush(message_key, json.dumps(user_message))
+    # 将用户消息添加到 Redis 中
+    redis_client.rpush(message_key, json.dumps(user_msg))
 
-    message_id = str(uuid.uuid4())
+    # 定义一个异步保存消息到 MySQL 的协程函数
+    async def save_messages():
+        # 创建一个新的消息记录
+        db_msg = ChatMessage(
+            id=str(uuid.uuid4()),
+            session_id=request.sessionId,
+            role="user",
+            content=request.message,
+            attachments=json.dumps(request.image_ids)
+        )
+        # 将新消息记录添加到数据库会话中
+        db.add(db_msg)
 
-    async def generate_response():
-        response_chunks = ["地震", "发生后", "，我建议"]
-        for chunk in response_chunks:
-            data = {
-                "message_id": message_id,
-                "data": {
-                    "content": chunk,
-                    "done": False
-                }
-            }
-            yield f"data: {str(data).replace(' ', '')}\n\n"
-            await asyncio.sleep(1)
+        # 处理消息关联的图片
+        for img_id in request.image_ids:
+            # 查询图片记录
+            db_image = Image.query.get(img_id)
+            if not db_image:
+                continue
+            # 创建消息和图片的关联记录
+            db_rel = MessageImage(
+                message_id=db_msg.id,
+                image_id=img_id
+            )
+            # 将关联记录添加到数据库会话中
+            db.add(db_rel)
 
-        assistant_message = {
-            "role": "assistant",
-            "content": "".join(response_chunks),
-            "attachments": []
-        }
-        redis_client.rpush(message_key, json.dumps(assistant_message))
+        # 提交数据库事务
+        db.commit()
 
-        end_data = {
-            "message_id": message_id,
-            "data": {
-                "done": True
-            }
-        }
-        yield f"data: {str(end_data).replace(' ', '')}\n\n"
+    # 异步执行保存消息到 MySQL 的任务
+    asyncio.create_task(save_messages())
 
-    return StreamingResponse(generate_response(), media_type='text/event-stream')
+    # 定义一个流式响应的协程函数
+    async def stream_response():
+        # 发送流式响应的第一部分，表示正在思考
+        yield 'data: {"content": "思考中...", "done": false}\n\n'
+        # 模拟处理时间
+        await asyncio.sleep(2)
+        # 发送流式响应的第二部分，表示处理完成
+        yield 'data: {"content": "完成！", "done": true}\n\n'
+
+    # 返回流式响应
+    return StreamingResponse(stream_response(), media_type="text/event-stream")
 
 
-# 6. 预设提示接口
+# === 获取历史详细对话 ===
+@router.post("/chat/history_detail", response_model=HistoryDetailResponse)
+async def get_history_detail(
+    request: SendMessageRequest,  # 接收获取历史详细对话的请求数据
+    db: Session = Depends(get_db)  # 依赖注入 SQLAlchemy 的数据库会话
+):
+    # 尝试从 Redis 缓存中获取历史详细对话
+    cached_msgs = redis_client.get(f"history:{request.sessionId}")
+    if cached_msgs:
+        # 若缓存存在，直接返回缓存数据
+        return {"data": {"messages": json.loads(cached_msgs)}}
+
+    # 若缓存不存在，从 MySQL 数据库中查询指定会话的所有消息记录
+    db_msgs = db.query(ChatMessage).filter(
+        ChatMessage.session_id == request.sessionId
+    ).all()
+
+    # 处理查询结果，将其转换为需要的格式
+    messages = []
+    for msg in db_msgs:
+        messages.append({
+            "role": msg.role,
+            "content": msg.content,
+            "image_ids": json.loads(msg.attachments)
+        })
+
+    # 将查询结果更新到 Redis 缓存中，并设置缓存过期时间为 1 小时
+    redis_client.set(f"history:{request.sessionId}", json.dumps(messages), ex=3600)
+    # 返回包含历史详细对话的响应
+    return {"data": {"messages": messages}}
+
+
+# === 上传图片接口 ===
+@router.post("/chat/upload_image", response_model=UploadImageResponse)
+async def upload_image(
+    files: list[UploadFile] = File(...),  # 接收上传的图片文件列表
+    db: Session = Depends(get_db)  # 依赖注入 SQLAlchemy 的数据库会话
+):
+    # 检查是否提供了图片文件
+    if not files:
+        # 若未提供，抛出 HTTP 异常，返回 400 错误
+        raise HTTPException(400, "未提供图片")
+
+    # 用于存储上传成功的图片 ID
+    image_ids = []
+    for file in files:
+        # 生成一个唯一的文件名，用于保存图片
+        save_path = f"uploads/{uuid.uuid4()}.{file.filename.split('.')[-1]}"
+        # 以二进制写入模式打开文件，并将上传的图片内容写入
+        with open(save_path, "wb") as f:
+            f.write(await file.read())
+
+        # 创建一个新的图片记录
+        db_image = Image(
+            id=str(uuid.uuid4()),
+            file_path=save_path,
+            file_type=file.content_type
+        )
+        # 将新图片记录添加到数据库会话中
+        db.add(db_image)
+        # 将图片 ID 添加到上传成功的图片 ID 列表中
+        image_ids.append(db_image.id)
+
+    # 提交数据库事务
+    db.commit()
+    # 返回包含上传状态、消息和图片 ID 列表的响应
+    return UploadImageResponse(
+        status="success",
+        image_ids=image_ids,
+        message=f"成功上传 {len(files)} 张图片"
+    )
+
+
+# === 预设提示接口 ===
 @router.post("/prompts/templates", response_model=PromptsResponse)
-async def get_prompts():
-    return {
-        "data": {
-            "templates": [
-                {
-                    "id": "disaster_summary",
-                    "name": "分析整体灾情",
-                    "content": "根据灾后影像详细分析一下整体灾情"
-                }
-            ]
-        }
-    }
+async def get_prompts(db: Session = Depends(get_db)):
+    # 尝试从 Redis 缓存中获取预设提示模板
+    cached_prompts = redis_client.get("prompts")
+    if cached_prompts:
+        # 若缓存存在，直接返回缓存数据
+        return {"data": {"templates": json.loads(cached_prompts)}}
+
+    # 若缓存不存在，从 MySQL 数据库中查询所有预设提示模板记录
+    db_prompts = db.query(PromptTemplate).all()
+    # 处理查询结果，将其转换为需要的格式
+    prompts = [
+        {"id": p.id, "name": p.name, "content": p.content}
+        for p in db_prompts
+    ]
+
+    # 将查询结果更新到 Redis 缓存中，并设置缓存过期时间为 1 小时
+    redis_client.set("prompts", json.dumps(prompts), ex=3600)
+    # 返回包含预设提示模板的响应
+    return {"data": {"templates": prompts}}
