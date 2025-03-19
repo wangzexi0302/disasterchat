@@ -119,12 +119,82 @@ class SentiModelAgent:
                 return qa_response
             except Exception as e:
                 logger.error(f"调用QA-Agent失败：{str(e)}",exc_info=True)
-                raise
+                return
 
 
 
 
+    def run_stream(self, messages: List[Dict[str, str]]) -> Generator[Dict[str, Any], None, None] :
+        logger.info("流式运行意图分析模型")
+        function_defs = self._get_function_definitions()
+        ollama_messages = [
+            {
+                "role": msg["role"],
+                "content": msg["content"]
+            }
+            for msg in messages
+        ]          
+        system_message = {
+            "role": "system",
+            "content": (
+                "你是一个专注于灾害管理和应急响应的AI助手。并且可以通过识别图片来分析图片中的灾害信息，"
+                "提供防灾减灾建议，以及获取灾害信息。如果用户的问题需要查询特定信息，"
+                "请使用提供的工具函数来获取信息。不要编造不存在的工具或函数。"
+            )
+        }
+        ollama_messages.insert(0, system_message)
+
+        #第一阶段意图识别
+        try:
+            first_response = ollama.chat(
+                model = self.model
+                messages=ollama_messages,
+                options={
+                    "tools": function_defs
+                }
+            )
+            logger.info(f"成功分析意图")
+        except Exception as e:
+            logger.error(f"意图分析失败：{str(e)}", exc_info=True)
+            raise
+        assistant_message = first_response["message"]
+        ollama_messages.append(assistant_message)
+
+        if "tool_calls" in assistant_message and assistant_message["tool_calls"]:
+            tool_calls = assistant_message["tool_calls"]
+            for tool_call in tool_calls:
+                function_name = tool_call["function"]["name"]
+                tool = self._get_tool_by_name(function_name)
+                if tool:
+                    logger.info(f"正在调用Agent：{function_name}")
+                    try:
+                        result = tool.execute(ollama_messages)
+                        ollama_messages.append(
+                            {
+                                "role": "tool",
+                                "name":function_name,
+                                "content": result["message"].content
+                            }
+                        )
+                    except Exception as e:
+                        logger.error(f"调用Agent：{function_name}失败：{str(e)}", exc_info=True)
+            try:
+                for chunk in ollama.chat(model=self.model, messages=ollama_messages, stream=True):
+                    yield chunk
+                logger.info(f"多模态Agent流式生成完成")
+            except Exception as e:
+                logger.error(f"多模态模型运行失败：{str(e)}",exc_info=True)
                 
+        else:
+            logger.info("运行QA-Agent")
+            try:
+                for chunk in ollama.chat(model=self.model, messages=ollama_messages, stream=True):
+                    yield chunk
+                logger.info("QA-Agent流式生成完成")
+            except Exception as e:
+                logger.error(f"QA-Agent流式生成失败：{str(e)}", exc_info=True)
+                return
+
 
 
 
