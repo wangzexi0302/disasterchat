@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any, Union
 
 class Message(BaseModel):
-    role: str = Field(..., description="消息角色，如user或assistant")
+    role: str = Field(..., description="消息角色,如user或assistant")
     content: str = Field(..., description="消息内容")
 
 class ChatRequest(BaseModel):
@@ -42,3 +42,9 @@ class TextContent(BaseModel):
 class VLChatMessage(BaseModel):
     role: str
     content: Union[str, List[Union[TextContent, ImageContent]]]
+
+# 发送消息接口的请求模型
+class SendMessageRequest(BaseModel):
+    sessionId: str
+    message: VLChatMessage
+
