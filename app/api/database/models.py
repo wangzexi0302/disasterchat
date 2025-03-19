@@ -32,7 +32,7 @@ class ChatMessage(Base):
     session_id = Column(String(36), ForeignKey("chat_sessions.id"), index=True)  # 所属会话ID
     role = Column(String(20), nullable=False)  # 消息角色：user/assistant
     content = Column(String(2000))  # 文本内容
-    attachments = Column(String)  # 存储图片ID列表（JSON格式，如["img_1", "img_2"]）
+    attachments = Column(String(255))  # 存储图片ID列表（JSON格式，如["img_1", "img_2"]）
     created_at = Column(DateTime, default=datetime.utcnow)  # 消息时间
     
     # 关系：消息属于某个会话

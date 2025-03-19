@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # 数据库连接 URL
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://user:password@localhost/chat_db"
+SQLALCHEMY_DATABASE_URL = "mysql+pymysql://disasterchat_user:123456@localhost/disasterchat"
 
 # 创建数据库引擎
 engine = create_engine(SQLALCHEMY_DATABASE_URL)

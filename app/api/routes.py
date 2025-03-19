@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException,UploadFile,File
 from sqlalchemy.orm import Session
 from app.api.database.db_setup import get_db
 from app.api.database.models import DBSession, ChatMessage, Image, MessageImage, PromptTemplate
@@ -11,6 +11,10 @@ from fastapi.responses import StreamingResponse # 流式响应
 from app.api.models import ChatRequest, ChatResponse, VLChatMessage,ImageContent,TextContent,SendMessageRequest
 from app.agents.agent_service import AgentService
 from app.agents.multimodal_agent import MultiModalAgent
+from app.api.database.db_setup import engine
+from app.api.database.models import Base
+
+Base.metadata.create_all(bind=engine)
 
 # 初始化 Redis 客户端，用于缓存数据和实现异步操作
 redis_client = redis.Redis(host='localhost', port=6379, db=0)
