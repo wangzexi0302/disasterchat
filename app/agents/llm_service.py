@@ -15,7 +15,7 @@ def get_llm_response(prompt: str, model: str = None) -> str:
     Raises:
         Exception: 如果与LLM服务通信出错
     """
-    model = model or settings.default_model
+    model = model or settings.default_model 
     
     try:
         # 使用ollama包直接调用模型
