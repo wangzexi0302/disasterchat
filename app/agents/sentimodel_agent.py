@@ -109,7 +109,17 @@ class SentiModelAgent:
                 raise
         else:
             #没有agent调用就调用QA_agent
-            return 
+            logger.info(f"调用QA-Agent")
+            ollama_messages.append(assistant_message)
+            try:
+                qa_response = ollama.chart(
+                    model=self.model,
+                    messages=ollama_messages,
+                )
+                return qa_response
+            except Exception as e:
+                logger.error(f"调用QA-Agent失败：{str(e)}",exc_info=True)
+                raise
 
 
 
