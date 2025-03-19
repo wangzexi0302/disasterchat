@@ -18,7 +18,7 @@ class CallMultiModel(Tool):
             "message": {
                 "type": "string",
                 "description": "用户输入的图片和历史消息",
-                "required": True
+                "required": False
             }
         }
     
