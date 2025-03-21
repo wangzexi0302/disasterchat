@@ -393,6 +393,9 @@ async def send_message(
                 ## 给一个image_list可以拓展
                 image_list = [image_url]
                 
+                for image in image_list:
+                    yield f"data: {json.dumps({'message_id': message_id, 'data': {'done': False, 'image_url': image}})}\n\n"
+                
                 for chunk in stream_response:
                     logger.info(f"原始 chunk: {chunk}")  # 关键调试日志
                     content = (
@@ -407,7 +410,6 @@ async def send_message(
                             "data": {
                                 "content": content,
                                 "done": chunk.get("done", False),
-                                "image_url": image_url  # 添加图片URL
                             }
                         }
                         # 发送SSE消息
@@ -423,9 +425,6 @@ async def send_message(
                                 "created_at": datetime.utcnow().isoformat()
                             })
                         )
-
-                for image in image_list:
-                    yield f"data: {json.dumps({'message_id': message_id, 'data': {'content': f'<iamge_url>:{image}', 'done': False}})}\n\n"
                 
                 logger.info("流式回复生成完成")
                 db.commit()
