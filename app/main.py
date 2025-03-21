@@ -5,6 +5,7 @@ import uvicorn
 import logging
 import os
 from datetime import datetime
+from fastapi.staticfiles import StaticFiles
 
 # 配置日志
 log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
@@ -23,10 +24,19 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+
+
 app = FastAPI(
     title="DisasterChat Agent API",
     description="FastAPI后端与Ollama集成提供LLM Agent服务，支持函数调用",
     version="0.1.0"
+)
+
+#挂载静态文件图片
+app.mount(
+    "/static",  # 访问路径前缀
+    StaticFiles(directory="test"),  # 指向项目根目录下的 test 文件夹
+    name="static"  # 路由名称（与 url_for 中的名称一致）
 )
 
 # 添加CORS中间件，允许流式响应

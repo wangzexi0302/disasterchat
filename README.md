@@ -41,6 +41,10 @@
 
 ## 运行服务器
 
+# Windows完全终止旧进程
+taskkill /F /IM python.exe
+taskkill /F /IM uvicorn.exe
+
 确保已激活conda环境 (disasterchat)，然后执行:
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

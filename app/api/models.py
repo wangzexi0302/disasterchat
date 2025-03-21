@@ -32,7 +32,8 @@ class StreamResponse(BaseModel):
 # 添加多模态内容项的模型
 class ImageContent(BaseModel):
     type: str = "image"
-    image_data: str  # base64编码的图像数据
+    image_id: str
+    
 
 class TextContent(BaseModel):
     type: str = "text"

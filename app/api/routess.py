@@ -454,4 +454,199 @@ async def get_prompts(db: Session = Depends(get_db)):
     return {"data": {"templates": prompts}}
 
 
+@router.post("/chat/send")
+async def send_message(
+    request: SendMessageRequest,request_obj: Request,db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """
+    优化后的消息发送接口，支持文本/多模态消息流式响应及SSE实时推送
+    """
+    try:
+        # ----------------------
+        # 1. 会话验证（Redis优先）
+        # ----------------------
+        session_id = request.sessionId
+        session_key = f"session:{session_id}"
 
+        # 快速验证会话（Redis）
+        if not redis_client.exists(session_key):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID"
+            )
+        # 验证数据库会话
+        db_session = db.query(DBSession).filter(DBSession.id == session_id).first()
+        if not db_session:
+            raise HTTPException(400, "Invalid session ID in database")
+
+        # ----------------------
+        # 2. 解析消息内容
+        # ----------------------
+        text_content = ""
+        image_ids = []
+        is_multimodal = False
+
+        # 处理消息内容
+        if isinstance(request.message.content, str):
+            text_content = request.message.content.strip()
+        elif isinstance(request.message.content, list):
+            for item in request.message.content:
+                if item.type == "text":
+                    text_content += item.text.strip() + " "
+                elif item.type == "image":
+                    if not item.image_id:
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Image content missing image_id"
+                        )
+                    image_ids.append(item.image_id)
+                    is_multimodal = True
+            text_content = text_content.strip()  # 去除多余空格
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid content type. Expected str or list"
+            )
+
+        # ----------------------
+        # 3. 数据库事务处理
+        # ----------------------
+        with db.begin_nested():  # 开启事务嵌套
+            # 主消息记录
+            chat_message = ChatMessage(
+                id=str(uuid.uuid4()),
+                session_id=session_id,
+                role=request.message.role,
+                content=text_content,
+                attachments=json.dumps(image_ids) if image_ids else None
+            )
+            db.add(chat_message)
+
+            # 验证并关联图片
+            image_paths = []
+            for img_id in image_ids:
+                db_image = db.query(Image).filter(Image.id == img_id).first()
+                if not db_image:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Image not found: {img_id}"
+                    )
+                image_paths.append(db_image.file_path)  # 收集图片路径
+
+                # 消息-图片关联
+                db.add(MessageImage(
+                    message_id=chat_message.id,
+                    image_id=img_id
+                ))
+
+        # ----------------------
+        # 4. 构造LLM消息格式
+        # ----------------------
+        llm_messages = []
+        if is_multimodal:
+            # 多模态消息格式（文本+图片路径）
+            llm_messages = [{
+                "role": request.message.role,
+                "content": [
+                    {"type": "text", "text": text_content},
+                    *[{"type": "image", "image_data": path} for path in image_paths]
+                ]
+            }]
+        else:
+            # 纯文本消息
+            llm_messages = [{"role": request.message.role, "content": text_content}]
+
+        # ----------------------
+        # 5. 流式响应生成及SSE推送
+        # ----------------------
+        async def sse_stream_generator() -> Generator[str, None, None]:
+            try:
+                # 选择代理
+                if is_multimodal:
+                    stream_response = multimodal_agent.run_stream(llm_messages, model="llava:latest")
+                else:
+                    stream_response = agent_service.run_stream(llm_messages, model="qwen2:7b")
+
+                message_id = str(uuid.uuid4())
+
+                # 创建AI消息记录
+                assistant_message = ChatMessage(
+                    id=message_id,
+                    session_id=session_id,
+                    role="assistant",
+                    content="",  # 后续流式填充内容
+                    attachments=None
+                )
+                db.add(assistant_message)
+
+                for chunk in stream_response:
+                    logger.info(f"原始 chunk: {chunk}")  # 关键调试日志
+                    content = (
+                        chunk.get("message", {}).get("content", "")  # Ollama 格式
+                    )
+                    if not content:
+                        content = chunk.get("text", "") or chunk.get("output", "") or ""
+                    if content.strip():
+                        assistant_message.content += content
+                        sse_chunk = {
+                            "message_id": message_id,
+                            "data": {
+                                "content": content,
+                                "done": chunk.get("done", False)
+                            }
+                        }
+                        # 发送SSE消息
+                        yield f"data: {json.dumps(sse_chunk)}\n\n"
+                        # 推送到Redis供其他客户端接收
+                        redis_client.rpush(
+                            f"messages:{session_id}",
+                            json.dumps({
+                                "id": message_id,
+                                "role": "assistant",
+                                "content": content,
+                                "attachments": [],
+                                "created_at": datetime.utcnow().isoformat()
+                            })
+                        )
+                logger.info("流式回复生成完成")
+                db.commit()
+                yield f"data: {json.dumps({'message_id': message_id, 'data': {'content': '', 'done': True}})}\n\n"
+
+            except Exception as e:
+                error_chunk = {
+                    "error": str(e),
+                    "detail": "Inference failed"
+                }
+                yield f"data: {json.dumps(error_chunk)}\n\n"
+
+        # ----------------------
+        # 6. 保存用户消息到Redis
+        # ----------------------
+        if redis_client:
+            redis_client.rpush(
+                f"messages:{session_id}",
+                json.dumps({
+                    "id": chat_message.id,
+                    "role": request.message.role,
+                    "content": text_content,
+                    "attachments": image_paths,
+                    "created_at": datetime.utcnow().isoformat()
+                })
+            )
+
+        return StreamingResponse(
+            sse_stream_generator(),
+            media_type="text/event-stream"
+        )
+
+    except HTTPException as e:
+        db.rollback()  # 回滚事务
+        raise e
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Server error: {str(e)}"
+        )
+    
+    

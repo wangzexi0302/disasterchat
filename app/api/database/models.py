@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime
+import uuid
 
 # 声明基类
 Base = declarative_base()
@@ -13,7 +14,7 @@ class DBSession(Base):
     """存储会话元数据"""
     __tablename__ = "chat_sessions"
     
-    id = Column(String(36), primary_key=True, index=True)  # UUID格式会话ID
+    id = Column(String(36), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))  # UUID格式会话ID
     name = Column(String(255), nullable=False)  # 会话名称（如"会话1"）
     created_at = Column(DateTime, default=datetime.utcnow)  # 创建时间
     
@@ -28,7 +29,7 @@ class ChatMessage(Base):
     """存储聊天消息内容"""
     __tablename__ = "chat_messages"
     
-    id = Column(String(36), primary_key=True, index=True)  # 消息ID
+    id = Column(String(36), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))  # 消息ID
     session_id = Column(String(36), ForeignKey("chat_sessions.id"), index=True)  # 所属会话ID
     role = Column(String(20), nullable=False)  # 消息角色：user/assistant
     content = Column(String(2000))  # 文本内容
@@ -49,10 +50,11 @@ class Image(Base):
     """存储图片元数据及本地路径"""
     __tablename__ = "images"
     
-    id = Column(String(36), primary_key=True, index=True)  # 图片ID
+    id = Column(String(36), primary_key=True, index=True, default=lambda: str(uuid.uuid4())) # 图片ID
     file_path = Column(String(255), nullable=False)  # 本地存储路径（如"uploads/1.jpg"）
     file_type = Column(String(50), nullable=False)  # 图片类型（如image/jpeg）
     uploaded_at = Column(DateTime, default=datetime.utcnow)  # 上传时间
+    type = Column(String)  # 新增字段type
     
     # 关系：图片关联的消息（通过中间表）
     message_relations = relationship("MessageImage", back_populates="image")
