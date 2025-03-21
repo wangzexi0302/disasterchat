@@ -389,6 +389,9 @@ async def send_message(
 
                 # 构造图片URL
                 image_url = str(request_obj.url_for('static', path="test_image_2.png"))
+
+                ## 给一个image_list可以拓展
+                image_list = [image_url]
                 
                 for chunk in stream_response:
                     logger.info(f"原始 chunk: {chunk}")  # 关键调试日志
@@ -420,6 +423,10 @@ async def send_message(
                                 "created_at": datetime.utcnow().isoformat()
                             })
                         )
+
+                for image in image_list:
+                    yield f"data: {json.dumps({'message_id': message_id, 'data': {'content': f'<iamge_url>:{image}', 'done': False}})}\n\n"
+                
                 logger.info("流式回复生成完成")
                 db.commit()
                 yield f"data: {json.dumps({'message_id': message_id, 'data': {'content': '', 'done': True}})}\n\n"
