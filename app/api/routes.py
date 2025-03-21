@@ -404,7 +404,7 @@ async def send_message(
                             "data": {
                                 "content": content,
                                 "done": chunk.get("done", False),
-                                "image_url": image_url  # 添加图片URL
+                                "image_url": None  # 添加图片URL
                             }
                         }
                         # 发送SSE消息
@@ -422,7 +422,13 @@ async def send_message(
                         )
                 logger.info("流式回复生成完成")
                 db.commit()
-                yield f"data: {json.dumps({'message_id': message_id, 'data': {'content': '', 'done': True}})}\n\n"
+                yield f"data: {json.dumps({
+                    'message_id': message_id, 
+                    'data': {
+                        'content': '',
+                        'done': True,
+                        "image_url": image_url,
+                        }})}\n\n"
 
             return StreamingResponse(
                 sse_stream_generator(),

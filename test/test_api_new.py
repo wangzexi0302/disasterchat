@@ -254,7 +254,7 @@ if __name__ == "__main__":
         image_id = test_upload_image(session_id) if os.path.exists(TEST_IMAGE_PATH) else None
 
         # 3. 发送纯文本消息
-        #test_send_text_message(session_id)
+        test_send_text_message(session_id)
 
         # 4. 发送多模态消息（需图片上传成功）
         if image_id:
