@@ -1,3 +1,5 @@
+import random
+from time import sleep
 from fastapi import APIRouter,Request,Depends,Form, BackgroundTasks, HTTPException,UploadFile,File,status
 from sqlalchemy.orm import Session
 from app.api.database.db_setup import get_db
@@ -495,6 +497,150 @@ async def send_message(
                 sse_stream_generator(),
                 media_type="text/event-stream"
             )
+        elif text_content == "请判断受灾后A点到B点的道路是否通畅":
+            async def sse_stream_generator() -> Generator[str, None, None]:
+                # 调用大模型
+                stream_response = agent_service.run_stream(llm_messages, model="qwen2:7b")
+                message_id = str(uuid.uuid4())
+
+                # 创建AI消息记录
+                assistant_message = ChatMessage(
+                    id=message_id,
+                    session_id=session_id,
+                    role="assistant",
+                    content="",  # 后续流式填充内容
+                    attachments=None
+                )
+                db.add(assistant_message)
+
+                # 等待一下
+                sleep(1)
+
+                # 构造图片URL
+                image_url = str(request_obj.url_for('static', path="test_image_2.png"))
+
+                ## 给一个image_list可以拓展
+                image_list = [image_url]
+                
+                for image in image_list:
+                    yield f"data: {json.dumps({'message_id': message_id, 'data': {'done': False, 'image_url': image}})}\n\n"
+
+                answer = "根据您所提供的图像，经过路径判断受灾后A点B点之间的道路受到灾害影响不通畅。"
+                # Split answer into 1-2 byte chunks
+                chunks = []
+                i = 0
+                while i < len(answer):
+                    chunk_size = min(random.randint(1,2), len(answer)-i)
+                    chunks.append(answer[i:i+chunk_size])
+                    i += chunk_size
+                
+                stream_response = chunks
+                
+                for chunk in stream_response:
+                    logger.info(f"原始 chunk: {chunk}")
+                    content = chunk
+                    if content.strip():
+                        assistant_message.content += content
+                        sse_chunk = {
+                            "message_id": message_id,
+                            "data": {
+                                "content": content,
+                                "done": False
+                            }
+                        }
+                        # 发送SSE消息
+                        yield f"data: {json.dumps(sse_chunk)}\n\n"
+                        # 推送到Redis供其他客户端接收
+                        redis_client.rpush(
+                            f"messages:{session_id}",
+                            json.dumps({
+                                "id": message_id,
+                                "role": "assistant",
+                                "content": content,
+                                "attachments": [],
+                                "created_at": datetime.utcnow().isoformat()
+                            })
+                        )
+                logger.info("流式回复生成完成")
+                db.commit()
+                yield f"data: {json.dumps({'message_id': message_id, 'data': {'content': '', 'done': True}})}\n\n"
+            return StreamingResponse(
+                sse_stream_generator(),
+                media_type="text/event-stream"
+            )
+
+        elif text_content == "那受灾前A点到B点的道路是否通畅呢？":
+            async def sse_stream_generator() -> Generator[str, None, None]:
+                # 调用大模型
+                stream_response = agent_service.run_stream(llm_messages, model="qwen2:7b")
+                message_id = str(uuid.uuid4())
+
+                # 创建AI消息记录
+                assistant_message = ChatMessage(
+                    id=message_id,
+                    session_id=session_id,
+                    role="assistant",
+                    content="",  # 后续流式填充内容
+                    attachments=None
+                )
+                db.add(assistant_message)
+
+                # 等待一下
+                sleep(1)
+
+                # 构造图片URL
+                image_url = str(request_obj.url_for('static', path="test_image_2.png"))
+
+                ## 给一个image_list可以拓展
+                image_list = [image_url]
+                
+                for image in image_list:
+                    yield f"data: {json.dumps({'message_id': message_id, 'data': {'done': False, 'image_url': image}})}\n\n"
+
+                answer = "根据您所提供的图像，经过路径判断受灾前A点B点之间的道路是通畅的。"
+                # Split answer into 1-2 byte chunks
+                chunks = []
+                i = 0
+                while i < len(answer):
+                    chunk_size = min(random.randint(1,2), len(answer)-i)
+                    chunks.append(answer[i:i+chunk_size])
+                    i += chunk_size
+                
+                stream_response = chunks
+                
+                for chunk in stream_response:
+                    logger.info(f"原始 chunk: {chunk}")
+                    content = chunk
+                    if content.strip():
+                        assistant_message.content += content
+                        sse_chunk = {
+                            "message_id": message_id,
+                            "data": {
+                                "content": content,
+                                "done": False
+                            }
+                        }
+                        # 发送SSE消息
+                        yield f"data: {json.dumps(sse_chunk)}\n\n"
+                        # 推送到Redis供其他客户端接收
+                        redis_client.rpush(
+                            f"messages:{session_id}",
+                            json.dumps({
+                                "id": message_id,
+                                "role": "assistant",
+                                "content": content,
+                                "attachments": [],
+                                "created_at": datetime.utcnow().isoformat()
+                            })
+                        )
+                logger.info("流式回复生成完成")
+                db.commit()
+                yield f"data: {json.dumps({'message_id': message_id, 'data': {'content': '', 'done': True}})}\n\n"
+            return StreamingResponse(
+                sse_stream_generator(),
+                media_type="text/event-stream"
+            )
+
         else:
             async def sse_stream_generator() -> Generator[str, None, None]:
                 try:
