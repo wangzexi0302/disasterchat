@@ -665,7 +665,7 @@ async def send_message(
 
             # 等待一下
             sleep(1)
-
+            message_id = str(uuid.uuid4())
             # 构造图片URL
             image_url = str(request_obj.url_for('static', path="test_image_5.png"))
 
@@ -675,6 +675,7 @@ async def send_message(
             for image in image_list:
                 image_id = generate_image_id(image_url)
                 yield f"data: {json.dumps({'message_id': message_id, 'data': {'done': False, 'image_url': image,'image_id':image_id,'type':"post"}})}\n\n"
+                
             async def sse_stream_generator() -> Generator[str, None, None]:
                 message_id = str(uuid.uuid4())
                 assistant_message = ChatMessage(
