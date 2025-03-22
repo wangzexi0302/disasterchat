@@ -339,33 +339,50 @@ async def send_message(
         # ----------------------
         # 3. 数据库事务处理
         # ----------------------
-        with db.begin_nested():  # 开启事务嵌套
-            # 主消息记录
-            chat_message = ChatMessage(
-                id=str(uuid.uuid4()),
-                session_id=session_id,
-                role=request.message.role,
-                content=text_content,
-                attachments=json.dumps(image_ids) if image_ids else None
+        try:
+            with db.begin_nested():  # 开启事务嵌套
+                # 主消息记录
+                chat_message = ChatMessage(
+                    id=str(uuid.uuid4()),
+                    session_id=session_id,
+                    role=request.message.role,
+                    content=text_content,
+                    attachments=json.dumps(image_ids) if image_ids else None
+                )
+                db.add(chat_message)
+
+                # 验证并关联图片
+                image_paths = []
+                for img_id in image_ids:
+                    db_image = db.query(Image).filter(Image.id == img_id).first()
+                    if not db_image:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Image not found: {img_id}"
+                        )
+                    image_paths.append(db_image.file_path)  # 收集图片路径
+
+                    # 消息-图片关联
+                    db.add(MessageImage(
+                        message_id=chat_message.id,
+                        image_id=img_id
+                    ))
+        except HTTPException as e:
+            db.rollback()  # 回滚事务
+            logging.error(f"HTTPException: {e}")
+            raise e
+        except Exception as e:
+            db.rollback()
+            logging.error(f"Unexpected error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Server error: {str(e)}"
             )
-            db.add(chat_message)
+        finally:
+            # 在事务结束后记录数据库会话状态
+            logging.info(f"Database session: {db.is_active}")
 
-            # 验证并关联图片
-            image_paths = []
-            for img_id in image_ids:
-                db_image = db.query(Image).filter(Image.id == img_id).first()
-                if not db_image:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Image not found: {img_id}"
-                    )
-                image_paths.append(db_image.file_path)  # 收集图片路径
 
-                # 消息-图片关联
-                db.add(MessageImage(
-                    message_id=chat_message.id,
-                    image_id=img_id
-                ))
 
         # ----------------------
         # 4. 构造LLM消息格式
@@ -644,7 +661,66 @@ async def send_message(
                 sse_stream_generator(),
                 media_type="text/event-stream"
             )
+        elif text_content == "请根据受灾场景综合判断房屋受损情况，要求尽可能的详细，且提供受灾图像的基本信息。":
 
+            # 等待一下
+            sleep(1)
+
+            # 构造图片URL
+            image_url = str(request_obj.url_for('static', path="test_image_5.png"))
+
+            ## 给一个image_list可以拓展
+            image_list = [image_url]
+                
+            for image in image_list:
+                image_id = generate_image_id(image_url)
+                yield f"data: {json.dumps({'message_id': message_id, 'data': {'done': False, 'image_url': image,'image_id':image_id,'type':"post"}})}\n\n"
+            async def sse_stream_generator() -> Generator[str, None, None]:
+                message_id = str(uuid.uuid4())
+                assistant_message = ChatMessage(
+                    id=message_id,
+                    session_id=session_id,
+                    role="assistant",
+                    content="",  # 后续流式填充内容
+                    attachments=None
+                )
+                db.add(assistant_message)
+                response_text = """这张卫星图像展示了飓风过后一个受灾区域的全貌。图像中可以明显看到大片浑浊的水域覆盖了树林和部分居民区，表明该区域经历了严重洪水，陆地大面积被淹。部分房屋依然可辨，但许多建筑似乎被水包围或部分浸泡，暗示基础设施可能遭受破坏，居民也可能面临被困和财产损失的风险。虽然树木依旧茂密，但被淹的情况可能对植被的根系造成损伤，长期来看会影响生态系统；而由于洪水覆盖，难以判断道路的完好性和通行状况，这可能对救援和疏散行动构成阻碍。根据对36个建筑物的统计，数据显示有22个建筑物无损坏，主要分布在图像上半部分和右侧；4个建筑物显示轻微损坏，分散在图像中部和左侧；7个建筑物受严重损坏，主要集中在图像的中下部和左侧；另外还有4个建筑物未分类。这种分布表明，虽然大部分房屋没有明显损坏，但局部区域尤其是图像中下部和左侧，受灾情况较为严重，提示救援和恢复工作需针对性展开。"""
+                # 模拟流式返回，将回复内容拆分成多个块
+                chunk_size = 50
+                for i in range(0, len(response_text), chunk_size):
+                    chunk = response_text[i:i + chunk_size]
+                    assistant_message.content += chunk
+                    sse_chunk = {
+                        "message_id": message_id,
+                        "data": {
+                            "content": chunk,
+                            "done": i + chunk_size >= len(response_text)
+                        }
+                    }
+                    # 发送SSE消息
+                    yield f"data: {json.dumps(sse_chunk)}\n\n"
+                    # 推送到Redis供其他客户端接收
+                    redis_client.rpush(
+                        f"messages:{session_id}",
+                        json.dumps({
+                            "id": message_id,
+                            "role": "assistant",
+                            "content": chunk,
+                            "attachments": [],
+                            "created_at": datetime.utcnow().isoformat()
+                        })
+                    )
+
+                logger.info("流式回复生成完成")
+                db.commit()
+                yield f"data: {json.dumps({'message_id': message_id, 'data': {'content': '', 'done': True}})}\n\n"
+
+            return StreamingResponse(
+                sse_stream_generator(),
+                media_type="text/event-stream"
+            )
+                       
         else:
             async def sse_stream_generator() -> Generator[str, None, None]:
                 try:

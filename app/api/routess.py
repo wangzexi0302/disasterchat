@@ -650,3 +650,30 @@ async def send_message(
         )
     
     
+        with db.begin_nested():  # 开启事务嵌套
+            # 主消息记录
+            chat_message = ChatMessage(
+                id=str(uuid.uuid4()),
+                session_id=session_id,
+                role=request.message.role,
+                content=text_content,
+                attachments=json.dumps(image_ids) if image_ids else None
+            )
+            db.add(chat_message)
+
+            # 验证并关联图片
+            image_paths = []
+            for img_id in image_ids:
+                db_image = db.query(Image).filter(Image.id == img_id).first()
+                if not db_image:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Image not found: {img_id}"
+                    )
+                image_paths.append(db_image.file_path)  # 收集图片路径
+
+                # 消息-图片关联
+                db.add(MessageImage(
+                    message_id=chat_message.id,
+                    image_id=img_id
+                ))

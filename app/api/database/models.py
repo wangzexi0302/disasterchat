@@ -54,7 +54,7 @@ class Image(Base):
     file_path = Column(String(255), nullable=False)  # 本地存储路径（如"uploads/1.jpg"）
     file_type = Column(String(50), nullable=False)  # 图片类型（如image/jpeg）
     uploaded_at = Column(DateTime, default=datetime.utcnow)  # 上传时间
-    type = Column(String)  # 新增字段type
+    type = Column(String(50))  # 新增字段type
     
     # 关系：图片关联的消息（通过中间表）
     message_relations = relationship("MessageImage", back_populates="image")
