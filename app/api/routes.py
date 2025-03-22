@@ -1,5 +1,6 @@
 import random
 from time import sleep
+import time
 from fastapi import APIRouter,Request,Depends,Form, BackgroundTasks, HTTPException,UploadFile,File,status
 from sqlalchemy.orm import Session
 from app.api.database.db_setup import get_db
@@ -78,6 +79,17 @@ class HistoryDetailResponse(BaseModel):
 class HistoryDetailRequest(BaseModel):
     sessionId: str  # 仅需会话ID 
 
+def generate_image_id(image_url):
+    # 获取当前时间戳
+    timestamp = str(int(time.time()))
+    # 生成一个随机整数
+    random_num = str(random.randint(1000, 9999))
+    # 拼接时间戳和随机数作为时间片随机值
+    random_value = timestamp + random_num
+    # 拼接图片 URL 和时间片随机值
+    image_id = image_url + random_value
+    return image_id
+
 # 上传图片接口的响应模型
 class UploadImageResponse(BaseModel):
     # 操作状态
@@ -100,7 +112,7 @@ PREDEFINED_TEMPLATES = [
     TemplateItem(
         id="disaster_summary",
         name="分析整体灾情",
-        content="根据灾后影像详细分析一下整体灾情"
+        content="请告诉我灾后影像的大致受灾情况"
     ),
     TemplateItem(
         id="relief_suggestion",
@@ -394,9 +406,9 @@ async def send_message(
 
                 ## 给一个image_list可以拓展
                 image_list = [image_url]
-                
                 for image in image_list:
-                    yield f"data: {json.dumps({'message_id': message_id, 'data': {'done': False, 'image_url': image}})}\n\n"
+                    image_id = generate_image_id(image_url)
+                    yield f"data: {json.dumps({'message_id': message_id, 'data': {'done': False, 'image_url': image,'image_id':image_id,'type':"post"}})}\n\n"
                 
                 for chunk in stream_response:
                     logger.info(f"原始 chunk: {chunk}")  # 关键调试日志
@@ -512,7 +524,9 @@ async def send_message(
                 image_list = [image_url]
                 
                 for image in image_list:
-                    yield f"data: {json.dumps({'message_id': message_id, 'data': {'done': False, 'image_url': image}})}\n\n"
+                    image_id = generate_image_id(image_url)
+
+                    yield f"data: {json.dumps({'message_id': message_id, 'data': {'done': False, 'image_url': image,'image_id':image_id,'type':"post"}})}\n\n"
 
                 answer = "根据您所提供的图像，经过路径判断受灾后A点B点之间的道路受到灾害影响不通畅。"
                 # Split answer into 1-2 byte chunks
@@ -584,7 +598,8 @@ async def send_message(
                 image_list = [image_url]
                 
                 for image in image_list:
-                    yield f"data: {json.dumps({'message_id': message_id, 'data': {'done': False, 'image_url': image}})}\n\n"
+                    image_id = generate_image_id(image_url)
+                    yield f"data: {json.dumps({'message_id': message_id, 'data': {'done': False, 'image_url': image,'image_id':image_id,'type':"post"}})}\n\n"
 
                 answer = "根据您所提供的图像，经过路径判断受灾前A点B点之间的道路是通畅的。"
                 # Split answer into 1-2 byte chunks
