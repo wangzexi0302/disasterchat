@@ -428,7 +428,69 @@ async def send_message(
                 
                 logger.info("流式回复生成完成")
                 db.commit()
+                yield f"data: {json.dumps({'message_id': message_id, 'data': {'content': '', 'done': True}})}\n\n"
+            return StreamingResponse(
+                sse_stream_generator(),
+                media_type="text/event-stream"
+            )
+        elif text_content == "变化检测":
+            async def sse_stream_generator() -> Generator[str, None, None]:
+                # 调用大模型
+                stream_response = agent_service.run_stream(llm_messages, model="qwen2:7b")
+                message_id = str(uuid.uuid4())
+
+                # 创建AI消息记录
+                assistant_message = ChatMessage(
+                    id=message_id,
+                    session_id=session_id,
+                    role="assistant",
+                    content="",  # 后续流式填充内容
+                    attachments=None
+                )
+                db.add(assistant_message)
+
+                # 构造图片URL
+                image_url = str(request_obj.url_for('static', path="test_image_2.png"))
+
+                ## 给一个image_list可以拓展
+                image_list = [image_url]
                 
+                for image in image_list:
+                    yield f"data: {json.dumps({'message_id': message_id, 'data': {'done': False, 'image_url': image}})}\n\n"
+                
+                for chunk in stream_response:
+                    logger.info(f"原始 chunk: {chunk}")  # 关键调试日志
+                    content = (
+                        chunk.get("message", {}).get("content", "")  # Ollama 格式
+                    )
+                    if not content:
+                        content = chunk.get("text", "") or chunk.get("output", "") or ""
+                    if content.strip():
+                        assistant_message.content += content
+                        sse_chunk = {
+                            "message_id": message_id,
+                            "data": {
+                                "content": content,
+                                "done": chunk.get("done", False),
+                            }
+                        }
+                        # 发送SSE消息
+                        yield f"data: {json.dumps(sse_chunk)}\n\n"
+                        # 推送到Redis供其他客户端接收
+                        redis_client.rpush(
+                            f"messages:{session_id}",
+                            json.dumps({
+                                "id": message_id,
+                                "role": "assistant",
+                                "content": content,
+                                "attachments": [image_url],
+                                "created_at": datetime.utcnow().isoformat()
+                            })
+                        )
+                
+                logger.info("流式回复生成完成")
+                db.commit()
+                yield f"data: {json.dumps({'message_id': message_id, 'data': {'content': '', 'done': True}})}\n\n"
             return StreamingResponse(
                 sse_stream_generator(),
                 media_type="text/event-stream"
