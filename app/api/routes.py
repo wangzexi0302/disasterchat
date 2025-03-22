@@ -433,7 +433,7 @@ async def send_message(
                 sse_stream_generator(),
                 media_type="text/event-stream"
             )
-        elif text_content == "变化检测":
+        elif text_content == "请告诉我灾后影像的大致受灾情况":
             async def sse_stream_generator() -> Generator[str, None, None]:
                 # 调用大模型
                 stream_response = agent_service.run_stream(llm_messages, model="qwen2:7b")
