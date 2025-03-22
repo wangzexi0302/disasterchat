@@ -437,11 +437,7 @@ async def send_message(
             )
         elif text_content == "请告诉我灾后影像的大致受灾情况":
             async def sse_stream_generator() -> Generator[str, None, None]:
-                # 调用大模型
-                stream_response = agent_service.run_stream(llm_messages, model="qwen2:7b")
                 message_id = str(uuid.uuid4())
-
-                # 创建AI消息记录
                 assistant_message = ChatMessage(
                     id=message_id,
                     session_id=session_id,
@@ -450,53 +446,46 @@ async def send_message(
                     attachments=None
                 )
                 db.add(assistant_message)
-
-                # 构造图片URL
-                image_url = str(request_obj.url_for('static', path="test_image_2.png"))
-
-                ## 给一个image_list可以拓展
-                image_list = [image_url]
-                
-                for image in image_list:
-                    yield f"data: {json.dumps({'message_id': message_id, 'data': {'done': False, 'image_url': image}})}\n\n"
-                
-                for chunk in stream_response:
-                    logger.info(f"原始 chunk: {chunk}")  # 关键调试日志
-                    content = (
-                        chunk.get("message", {}).get("content", "")  # Ollama 格式
-                    )
-                    if not content:
-                        content = chunk.get("text", "") or chunk.get("output", "") or ""
-                    if content.strip():
-                        assistant_message.content += content
-                        sse_chunk = {
-                            "message_id": message_id,
-                            "data": {
-                                "content": content,
-                                "done": chunk.get("done", False),
-                            }
+                response_text = """这张影像显示了一个受灾区域，飓风后的卫星图像。从图像来看，主要的受灾情况包括:
+大面积积水:图像显示大片的浑浊水域，覆盖了树林和部分居民区。这表明该区域可能经历了严重的洪水，导致陆地被淹没。
+居民区受灾:部分房屋仍然可见，但许多看起来被水包围或部分淹没，这可能导致基础设施受损、居民被困或者财产损失。
+树木和植被受影响:尽管树木仍然茂密，但被水淹没的情况可能导致植被根部受损，长期来看可能影响生态系统。
+道路情况不明:由于洪水的覆盖，难以判断道路是否完好或者是否仍可通行，可能影响救援和疏散行动。"""
+                # 模拟流式返回，将回复内容拆分成多个块
+                chunk_size = 50
+                for i in range(0, len(response_text), chunk_size):
+                    chunk = response_text[i:i + chunk_size]
+                    assistant_message.content += chunk
+                    sse_chunk = {
+                        "message_id": message_id,
+                        "data": {
+                            "content": chunk,
+                            "done": i + chunk_size >= len(response_text)
                         }
-                        # 发送SSE消息
-                        yield f"data: {json.dumps(sse_chunk)}\n\n"
-                        # 推送到Redis供其他客户端接收
-                        redis_client.rpush(
-                            f"messages:{session_id}",
-                            json.dumps({
-                                "id": message_id,
-                                "role": "assistant",
-                                "content": content,
-                                "attachments": [image_url],
-                                "created_at": datetime.utcnow().isoformat()
-                            })
-                        )
-                
+                    }
+                    # 发送SSE消息
+                    yield f"data: {json.dumps(sse_chunk)}\n\n"
+                    # 推送到Redis供其他客户端接收
+                    redis_client.rpush(
+                        f"messages:{session_id}",
+                        json.dumps({
+                            "id": message_id,
+                            "role": "assistant",
+                            "content": chunk,
+                            "attachments": [],
+                            "created_at": datetime.utcnow().isoformat()
+                        })
+                    )
+
                 logger.info("流式回复生成完成")
                 db.commit()
                 yield f"data: {json.dumps({'message_id': message_id, 'data': {'content': '', 'done': True}})}\n\n"
+
             return StreamingResponse(
                 sse_stream_generator(),
                 media_type="text/event-stream"
             )
+                
         elif text_content == "请判断受灾后A点到B点的道路是否通畅":
             async def sse_stream_generator() -> Generator[str, None, None]:
                 # 调用大模型
@@ -517,7 +506,7 @@ async def send_message(
                 sleep(1)
 
                 # 构造图片URL
-                image_url = str(request_obj.url_for('static', path="test_image_2.png"))
+                image_url = str(request_obj.url_for('static', path="test_image_3.png"))
 
                 ## 给一个image_list可以拓展
                 image_list = [image_url]
@@ -589,7 +578,7 @@ async def send_message(
                 sleep(1)
 
                 # 构造图片URL
-                image_url = str(request_obj.url_for('static', path="test_image_2.png"))
+                image_url = str(request_obj.url_for('static', path="test_image_4.png"))
 
                 ## 给一个image_list可以拓展
                 image_list = [image_url]
