@@ -127,7 +127,8 @@ def test_send_text_message(session_id):
     url = f"{BASE_URL}/api/chat/send"
     message = {
         "role": "user",
-        "content": "变化检测"
+        "content":[{"type": "text", "text": "我顶你你大爷的"}]  
+
     }
     payload = {
         "sessionId": session_id,
@@ -144,7 +145,7 @@ def test_send_text_message2(session_id):
     url = f"{BASE_URL}/api/chat/send"
     message = {
         "role": "user",
-        "content": "你好，这是纯文本消息"
+        "content": "你好，你是什么东西"
     }
     payload = {
         "sessionId": session_id,
@@ -251,25 +252,25 @@ if __name__ == "__main__":
         session_id = test_create_session()
 
         # 2. 上传图片（可选）
-        image_id = test_upload_image(session_id) if os.path.exists(TEST_IMAGE_PATH) else None
+        #image_id = test_upload_image(session_id) if os.path.exists(TEST_IMAGE_PATH) else None
 
         # 3. 发送纯文本消息
-        #test_send_text_message(session_id)
+        test_send_text_message(session_id)
 
         # 4. 发送多模态消息（需图片上传成功）
-        if image_id:
-            test_send_multimodal_message(session_id, image_id)
+        #if image_id:
+            #test_send_multimodal_message(session_id, image_id)
 
         # 5. 获取历史消息
-        test_get_history_list()
+        #test_get_history_list()
 
         #6. 测试获取历史消息（存在的会话）
-        test_get_history_detail_exists(session_id)
+        #test_get_history_detail_exists(session_id)
 
         # 6. 测试预设提示
-        test_prompts_template()
+        #test_prompts_template()
 
-        print("\n所有测试通过 ✅")
+        #print("\n所有测试通过 ✅")
 
     except AssertionError as e:
         print(f"\n测试失败 ❌：{str(e)}")

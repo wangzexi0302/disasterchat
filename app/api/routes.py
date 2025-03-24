@@ -121,20 +121,8 @@ PREDEFINED_TEMPLATES = [
     )
 ]
 
-# 辅助函数
-def save_session_to_mysql(session_id, session_name, db):
-    try:
-        db_session = DBSession(
-            id=session_id,
-            name=session_name
-        )
-        db.add(db_session)
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(500, detail="数据库写入失败")
-    finally:
-        db.close()
+
+
 
 
 def get_cached_or_db_data(cache_key, db_query, db, cache_time=3600):
@@ -151,21 +139,38 @@ def get_cached_or_db_data(cache_key, db_query, db, cache_time=3600):
     return data
 
 
+
 # 核心接口实现
 #开启新会话
 @router.post("/chat/new_session", response_model=NewSessionResponse)
-async def new_session(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    session_id = str(uuid.uuid4())
-    session_number = redis_client.incr("session_counter")
-    session_name = f"会话 {session_number}"
-    session_key = f"session:{session_id}"
-     # **同步存入 Redis**
-    redis_client.hset(session_key, mapping={
-        "sessionId": session_id,
-        "name": session_name
-    })
-    background_tasks.add_task(save_session_to_mysql, session_id, session_name, db)
-    return {"session_id": session_id}
+async def new_session(db: Session = Depends(get_db)):
+    try:
+        session_id = str(uuid.uuid4())
+        session_number = redis_client.incr("session_counter")
+        session_name = f"会话 {session_number}"
+        session_key = f"session:{session_id}"
+
+        # 同步存入 Redis
+        redis_client.hset(session_key, mapping={
+            "sessionId": session_id,
+            "name": session_name
+        })
+
+        # 存入 MySQL
+        db_session = DBSession(
+            id=session_id,
+            name=session_name
+        )
+        db.add(db_session)
+        db.commit()
+
+        return {"session_id": session_id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, detail=f"数据库写入失败: {str(e)}")
+    finally:
+        db.close()
+
 
 
 #查询历史会话接口
@@ -305,7 +310,12 @@ async def send_message(
         # 验证数据库会话
         db_session = db.query(DBSession).filter(DBSession.id == session_id).first()
         if not db_session:
+            logging.error(f"会话id不存在: {session_id}")
             raise HTTPException(400, "Invalid session ID in database")
+        else:
+            db.close()
+
+        
 
         # ----------------------
         # 2. 解析消息内容
@@ -340,7 +350,13 @@ async def send_message(
         # 3. 数据库事务处理
         # ----------------------
         try:
-            with db.begin_nested():  # 开启事务嵌套
+            if db.in_transaction():
+                logging.error("事务已经开启，无法再次开启！")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="事务已经开启，无法再次开启！"
+                )
+            with db.begin():
                 # 主消息记录
                 chat_message = ChatMessage(
                     id=str(uuid.uuid4()),
@@ -367,22 +383,22 @@ async def send_message(
                         message_id=chat_message.id,
                         image_id=img_id
                     ))
+            #db.commit()  # 手动提交
+
         except HTTPException as e:
             db.rollback()  # 回滚事务
-            logging.error(f"HTTPException: {e}")
+            logging.error(f"回滚HTTPException: {e}")
             raise e
         except Exception as e:
             db.rollback()
-            logging.error(f"Unexpected error: {e}")
+            logging.error(f"回滚Unexpected error: {e}. Request body: {request.dict()}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Server error: {str(e)}"
             )
         finally:
             # 在事务结束后记录数据库会话状态
-            logging.info(f"Database session: {db.is_active}")
-
-
+            logging.info(f"Database 最终session: {db.is_active}")
 
         # ----------------------
         # 4. 构造LLM消息格式
