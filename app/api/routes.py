@@ -243,7 +243,7 @@ async def delete_session(
 #查询历史会话接口
 @router.post("/chat/history_list", response_model=HistoryListResponse)
 async def get_history_list(db: Session = Depends(get_db)):
-    sessions = get_cached_or_db_data("history_sessions", db.query(DBSession), db)
+    sessions = get_cached_or_db_data("history_sessions", db.query(DBSession).order_by(DBSession.created_at.desc()), db)
     return {"data": {"templates": sessions}}
 
 #历史消息详情接口
