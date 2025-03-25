@@ -147,7 +147,7 @@ class SentiModelAgent:
         #第一阶段意图识别
         try:
             first_response = ollama.chat(
-                model = self.model
+                model = self.model,
                 messages=ollama_messages,
                 options={
                     "tools": function_defs
