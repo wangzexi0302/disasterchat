@@ -171,7 +171,74 @@ async def new_session(db: Session = Depends(get_db)):
     finally:
         db.close()
 
+# 修改会话名称接口
+@router.post("/chat/update_session_name", response_model=NewSessionResponse)
+async def update_session_name(
+    session_id: str = Form(...),
+    new_name: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    try:
+        session_key = f"session:{session_id}"
+        # 验证会话是否存在于 Redis
+        if not redis_client.exists(session_key):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID"
+            )
+        # 验证数据库会话
+        db_session = db.query(DBSession).filter(DBSession.id == session_id).first()
+        if not db_session:
+            logging.error(f"会话id不存在: {session_id}")
+            raise HTTPException(400, "Invalid session ID in database")
 
+        # 更新数据库中的会话名称
+        db_session.name = new_name
+        db.commit()
+
+        # 更新 Redis 中的会话名称
+        redis_client.hset(session_key, "name", new_name)
+
+        return {"session_id": session_id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, detail=f"更新会话名称失败: {str(e)}")
+    finally:
+        db.close()
+
+# 删除会话接口
+@router.post("/chat/delete_session", response_model=NewSessionResponse)
+async def delete_session(
+    session_id: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    try:
+        session_key = f"session:{session_id}"
+        # 验证会话是否存在于 Redis
+        if not redis_client.exists(session_key):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID"
+            )
+        # 验证数据库会话
+        db_session = db.query(DBSession).filter(DBSession.id == session_id).first()
+        if not db_session:
+            logging.error(f"会话id不存在: {session_id}")
+            raise HTTPException(400, "Invalid session ID in database")
+
+        # 删除数据库中的会话记录
+        db.delete(db_session)
+        db.commit()
+
+        # 删除 Redis 中的会话信息
+        redis_client.delete(session_key)
+
+        return {"session_id": session_id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, detail=f"删除会话失败: {str(e)}")
+    finally:
+        db.close()
 
 #查询历史会话接口
 @router.post("/chat/history_list", response_model=HistoryListResponse)
