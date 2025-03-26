@@ -39,6 +39,13 @@ app.mount(
     name="static"  # 路由名称（与 url_for 中的名称一致）
 )
 
+# 挂载 uploads 目录，访问路径前缀为 /uploads
+app.mount(
+    "/uploads",  # 访问路径前缀
+    StaticFiles(directory="uploads"),  # 指向项目根目录下的 uploads 文件夹
+    name="uploads"  # 路由名称
+)
+
 # 添加CORS中间件，允许流式响应
 app.add_middleware(
     CORSMiddleware,

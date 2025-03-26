@@ -64,7 +64,7 @@ class HistoryListResponse(BaseModel):
 # 获取历史详细对话接口的响应模型
 class ImageAttachment(BaseModel):
     url: str       # 图片URL（由file_path生成）
-    type: str      # 图片类型（如image/jpeg）
+    type: str      # 类型（如pre/jpeg）
 
 class ChatMessageResponse(BaseModel):
     id: str                # 消息ID
@@ -170,6 +170,8 @@ async def new_session(db: Session = Depends(get_db)):
         raise HTTPException(500, detail=f"数据库写入失败: {str(e)}")
     finally:
         db.close()
+        redis_client.delete("history_sessions")  # 删除历史会话缓存
+
 
 # 修改会话名称接口
 @router.post("/chat/update_session_name", response_model=NewSessionResponse)
@@ -249,6 +251,7 @@ async def get_history_list(db: Session = Depends(get_db)):
 #历史消息详情接口
 @router.post("/chat/history_detail", response_model=HistoryDetailResponse)
 async def get_history_detail(
+    request_obj: Request,  # 引入 Request 对象
     request: HistoryDetailRequest,  # 专用请求模型
     db: orm.Session = Depends(get_db)
 ):
@@ -256,17 +259,20 @@ async def get_history_detail(
     if not session_id:
         raise HTTPException(400, "会话ID不能为空")
     
-
+    '''
     # 1. 缓存优先（Redis）
     cache_key = f"history:{session_id}"
     cached_data = redis_client.get(cache_key)
     if cached_data:
         return HistoryDetailResponse(**json.loads(cached_data))
-
+    '''
     # 2. 数据库查询（JOIN优化）
     messages = db.query(ChatMessage).filter(
         ChatMessage.session_id == session_id
     ).order_by(ChatMessage.created_at.asc()).all()
+
+    # 记录从数据库中查询到的聊天消息数量
+    logging.info(f"从数据库中查询到 {len(messages)} 条聊天消息。")
 
     response_messages = []
     for msg in messages:
@@ -275,24 +281,41 @@ async def get_history_detail(
             MessageImage.message_id == msg.id
         ).all()
 
+        # 记录为当前消息查询到的图片数量
+        logging.info(f"为消息 ID {msg.id} 查询到 {len(images)} 张图片。")
+
+        attachments = [
+            ImageAttachment(
+                url=f"{request_obj.base_url}{img.file_path.replace('\\', '/')}",  # 使用 request_obj 的 base_url 属性
+                type=img.type
+            ) for img in images
+        ]
+
+        attachment_urls = [attachment.url for attachment in attachments]
+        logging.info(f"为消息 ID {msg.id} 生成的附件内容: {attachment_urls}")
+        
+        # 记录为当前消息生成的附件数量
+        logging.info(f"为消息 ID {msg.id} 生成了 {len(attachments)} 个附件。")
+
+
+        attachment_details = [f"URL: {attachment.url},TYPE: {attachment.type}" for attachment in attachments]
+        logging.info(f"为消息 ID {msg.id} 生成的附件内容: {attachment_details}")
+
         response_messages.append(ChatMessageResponse(
             id=msg.id,
             role=msg.role,
             content=msg.content,
-            attachments=[
-                ImageAttachment(
-                    url=f"http://your-domain.com/{img.file_path}",  # 替换为实际URL前缀
-                    type=img.file_type
-                ) for img in images
-            ],
+            attachments=attachments,
             created_at=msg.created_at.isoformat()
         ))
-
+    '''
     # 3. 缓存结果（有效期1小时）
     redis_client.set(cache_key, json.dumps(HistoryDetailResponse(
         data={"messages": response_messages}
     ).dict()), ex=3600)
-
+    '''
+    # 记录成功处理所有消息，并显示最终生成的响应消息数量
+    logging.info(f"成功处理所有消息。最终响应消息数量: {len(response_messages)}")
     return HistoryDetailResponse(data={"messages": response_messages})
 #图片上传接口
 @router.post("/chat/upload_image", response_model=UploadImageResponse)
@@ -375,12 +398,14 @@ async def send_message(
                 detail="Invalid session ID"
             )
         # 验证数据库会话
+        '''
         db_session = db.query(DBSession).filter(DBSession.id == session_id).first()
         if not db_session:
             logging.error(f"会话id不存在: {session_id}")
             raise HTTPException(400, "Invalid session ID in database")
-        else:
-            db.close()
+        #else:
+            #db.close()
+        '''
 
         
 
@@ -433,6 +458,8 @@ async def send_message(
                     attachments=json.dumps(image_ids) if image_ids else None
                 )
                 db.add(chat_message)
+                db.flush()  # 确保chat_message.id生成
+
 
                 # 验证并关联图片
                 image_paths = []
@@ -450,6 +477,8 @@ async def send_message(
                         message_id=chat_message.id,
                         image_id=img_id
                     ))
+                logging.info(f"成功插入消息: {chat_message.id}, 关联图片数量: {len(image_ids)}")
+
             #db.commit()  # 手动提交
 
         except HTTPException as e:
@@ -466,6 +495,7 @@ async def send_message(
         finally:
             # 在事务结束后记录数据库会话状态
             logging.info(f"Database 最终session: {db.is_active}")
+            db.commit()
 
         # ----------------------
         # 4. 构造LLM消息格式
@@ -896,3 +926,5 @@ async def send_message(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Server error: {str(e)}"
         )
+    # send_message 接口中事务处理完成后添加以下代码
+    redis_client.delete(f"history:{session_id}")  # 删除当前会话的历史缓存

@@ -127,7 +127,7 @@ def test_send_text_message(session_id):
     url = f"{BASE_URL}/api/chat/send"
     message = {
         "role": "user",
-        "content":[{"type": "text", "text": "我顶你你大爷的"}]  
+        "content":[{"type": "text", "text": "你好你好你糊弄很好奇哈哈哈哈哈哈哈"}]  
 
     }
     payload = {
