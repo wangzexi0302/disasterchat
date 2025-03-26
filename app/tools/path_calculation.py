@@ -195,13 +195,14 @@ class PathCalculation(Tool):
         return self._check_path_accessibility(mask_path, img_path, point_A, point_B)
 
 
-# 示例
-mask_path = r'../../demo_data/demo_1/pre_segmentation_mask.png'
-img_path = r'../../demo_data/demo_1/pre.png'
-point_A = (400, 600)  # 用户指定的 A 点（像素坐标）
-point_B = (900, 1000)  # 用户指定的 B 点（像素坐标）
+if __name__ == '__main__':
+    # 示例
+    mask_path = r'../../demo_data/demo_1/pre_segmentation_mask.png'
+    img_path = r'../../demo_data/demo_1/pre.png'
+    point_A = (400, 600)  # 用户指定的 A 点（像素坐标）
+    point_B = (900, 1000)  # 用户指定的 B 点（像素坐标）
 
-path_calculation = PathCalculation()
-result = path_calculation.execute(mask_path, img_path, point_A, point_B)
+    path_calculation = PathCalculation()
+    result = path_calculation.execute(mask_path, img_path, point_A, point_B)
 
-print(result)
+    print(result)
