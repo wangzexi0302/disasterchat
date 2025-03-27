@@ -11,7 +11,6 @@ from typing import Generator, List, Dict, Any
 import redis
 import json
 from sqlalchemy import orm
-from sqlalchemy.exc import SQLAlchemyError
 import uuid
 import asyncio
 from fastapi.responses import StreamingResponse # 流式响应
@@ -22,7 +21,6 @@ from app.api.database.db_setup import engine
 from app.api.database.models import Base
 import os
 import logging
-
 
 logger = logging.getLogger(__name__)  # 使用模块级 logger
 
@@ -38,7 +36,6 @@ Base.metadata.create_all(bind=engine)
 
 # 初始化 Redis 客户端，用于缓存数据和实现异步操作
 redis_client = redis.Redis(host='localhost', port=6379, db=0)
-
 
 # 创建一个 FastAPI 的路由实例，设置路由前缀和标签
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -127,6 +124,22 @@ PREDEFINED_TEMPLATES = [
 
 
 
+
+def get_cached_or_db_data(cache_key, db_query, db, cache_time=3600):
+    cached_data = redis_client.get(cache_key)
+    if cached_data:
+        return json.loads(cached_data)
+    db_data = db_query.all()
+    data = [
+        {"sessionId": s.id, "name": s.name, "content": ""} if isinstance(s, DBSession) else
+        {"id": p.id, "name": p.name, "content": p.content} if isinstance(p, PromptTemplate) else
+        {} for s in db_data
+    ]
+    redis_client.set(cache_key, json.dumps(data), ex=cache_time)
+    return data
+
+
+
 # 核心接口实现
 #开启新会话
 @router.post("/chat/new_session", response_model=NewSessionResponse)
@@ -168,6 +181,13 @@ async def update_session_name(
     db: Session = Depends(get_db)
 ):
     try:
+        session_key = f"session:{session_id}"
+        # 验证会话是否存在于 Redis
+        if not redis_client.exists(session_key):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID"
+            )
         # 验证数据库会话
         db_session = db.query(DBSession).filter(DBSession.id == session_id).first()
         if not db_session:
@@ -177,6 +197,9 @@ async def update_session_name(
         # 更新数据库中的会话名称
         db_session.name = new_name
         db.commit()
+
+        # 更新 Redis 中的会话名称
+        redis_client.hset(session_key, "name", new_name)
 
         return {"session_id": session_id}
     except Exception as e:
@@ -191,66 +214,39 @@ async def delete_session(
     session_id: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    logging.info(f"收到删除会话的请求。会话 ID: {session_id}")
     try:
+        session_key = f"session:{session_id}"
+        # 验证会话是否存在于 Redis
+        if not redis_client.exists(session_key):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid session ID"
+            )
         # 验证数据库会话
         db_session = db.query(DBSession).filter(DBSession.id == session_id).first()
         if not db_session:
             logging.error(f"会话id不存在: {session_id}")
             raise HTTPException(400, "Invalid session ID in database")
 
-        # 删除关联的消息记录
-        related_messages = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).all()
-        for message in related_messages:
-            # 删除消息和图片的关联记录
-            db.query(MessageImage).filter(MessageImage.message_id == message.id).delete()
-            db.delete(message)
-        logging.info(f"Deleted {len(related_messages)} related messages for session {session_id} from database.")
-
         # 删除数据库中的会话记录
         db.delete(db_session)
         db.commit()
-        logging.info(f"Deleted session {session_id} from database.")
+
+        # 删除 Redis 中的会话信息
+        redis_client.delete(session_key)
 
         return {"session_id": session_id}
-    except HTTPException as http_exc:
-        raise http_exc
-    except SQLAlchemyError as sql_exc:
-        db.rollback()
-        logging.error(f"数据库操作出错: {str(sql_exc)}")
-        raise HTTPException(500, detail=f"数据库操作出错: {str(sql_exc)}")
     except Exception as e:
         db.rollback()
-        logging.error(f"未知错误: {str(e)}")
-        raise HTTPException(500, detail=f"未知错误: {str(e)}")
+        raise HTTPException(500, detail=f"删除会话失败: {str(e)}")
     finally:
         db.close()
+
 #查询历史会话接口
 @router.post("/chat/history_list", response_model=HistoryListResponse)
 async def get_history_list(db: Session = Depends(get_db)):
-    """
-    获取聊天历史列表的接口函数
-    :param db: 数据库会话
-    :return: 包含历史会话数据的响应
-    """
-    # 定义缓存键
-    cache_key = "history_sessions"
-    # 定义数据库查询，按创建时间降序排序
-    db_query = db.query(DBSession).order_by(DBSession.created_at.desc())
-    # 缓存时间，单位为秒
-    cache_time = 3600
-
-    # 执行查询获取数据库数据
-    db_data = db_query.all()
-    # 处理数据库数据，将其转换为所需的字典格式
-    data = [
-        {"sessionId": s.id, "name": s.name, "content": ""} if isinstance(s, DBSession) else
-        {"id": p.id, "name": p.name, "content": p.content} if isinstance(p, PromptTemplate) else
-        {} for s in db_data
-    ]
-
-    return {"data": {"templates": data}}
-    
+    sessions = get_cached_or_db_data("history_sessions", db.query(DBSession).order_by(DBSession.created_at.desc()), db)
+    return {"data": {"templates": sessions}}
 
 #历史消息详情接口
 @router.post("/chat/history_detail", response_model=HistoryDetailResponse)
@@ -396,13 +392,13 @@ async def send_message(
         session_key = f"session:{session_id}"
 
         # 快速验证会话（Redis）
-        '''
-        if not await redis_client.exists(session_key):
+        if not redis_client.exists(session_key):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid session ID"
             )
         # 验证数据库会话
+        '''
         db_session = db.query(DBSession).filter(DBSession.id == session_id).first()
         if not db_session:
             logging.error(f"会话id不存在: {session_id}")
@@ -441,8 +437,6 @@ async def send_message(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Invalid content type. Expected str or list"
             )
-        logger.info(f"收到消息: {text_content}")  # 关键调试日志
-
 
         # ----------------------
         # 3. 数据库事务处理
@@ -501,19 +495,7 @@ async def send_message(
         finally:
             # 在事务结束后记录数据库会话状态
             logging.info(f"Database 最终session: {db.is_active}")
-
-            transaction_status = "active" if db.in_transaction() else "not active"
-            changes = []
-            if db.new:
-                changes.append(f"新增 {len(db.new)} 条记录")
-            if db.dirty:
-                changes.append(f"修改 {len(db.dirty)} 条记录")
-            if db.deleted:
-                changes.append(f"删除 {len(db.deleted)} 条记录")
-            change_info = ", ".join(changes) if changes else "无更改"
-            logging.info(f"Database 最终session: 会话是否活跃: {db.is_active}, 事务状态: {transaction_status}, 会话操作: {change_info}")
-
-            #db.commit()
+            db.commit()
 
         # ----------------------
         # 4. 构造LLM消息格式
@@ -644,7 +626,8 @@ async def send_message(
             return StreamingResponse(
                 sse_stream_generator(),
                 media_type="text/event-stream"
-            )               
+            )
+                
         elif text_content == "请判断受灾后A点到B点的道路是否通畅":
             async def sse_stream_generator() -> Generator[str, None, None]:
                 # 调用大模型
@@ -718,6 +701,7 @@ async def send_message(
                 sse_stream_generator(),
                 media_type="text/event-stream"
             )
+
         elif text_content == "那受灾前A点到B点的道路是否通畅呢？":
             async def sse_stream_generator() -> Generator[str, None, None]:
                 # 调用大模型
@@ -854,7 +838,6 @@ async def send_message(
                        
         else:
             async def sse_stream_generator() -> Generator[str, None, None]:
-                db = next(get_db())  # 新会话
                 try:
                     # 选择代理
                     if is_multimodal:
@@ -875,7 +858,7 @@ async def send_message(
                     db.add(assistant_message)
 
                     for chunk in stream_response:
-                        #logger.info(f"原始 chunk: {chunk}")  # 关键调试日志
+                        logger.info(f"原始 chunk: {chunk}")  # 关键调试日志
                         content = (
                             chunk.get("message", {}).get("content", "")  # Ollama 格式
                         )
@@ -892,7 +875,6 @@ async def send_message(
                             }
                             # 发送SSE消息
                             yield f"data: {json.dumps(sse_chunk)}\n\n"
-                            '''
                             # 推送到Redis供其他客户端接收
                             redis_client.rpush(
                                 f"messages:{session_id}",
@@ -904,7 +886,6 @@ async def send_message(
                                     "created_at": datetime.utcnow().isoformat()
                                 })
                             )
-                            '''
                     logger.info("流式回复生成完成")
                     db.commit()
                     yield f"data: {json.dumps({'message_id': message_id, 'data': {'content': '', 'done': True}})}\n\n"
@@ -924,7 +905,6 @@ async def send_message(
         # ----------------------
         # 6. 保存用户消息到Redis
         # ----------------------
-        '''
         if redis_client:
             redis_client.rpush(
                 f"messages:{session_id}",
@@ -936,7 +916,6 @@ async def send_message(
                     "created_at": datetime.utcnow().isoformat()
                 })
             )
-        '''
 
     except HTTPException as e:
         db.rollback()  # 回滚事务
@@ -948,4 +927,4 @@ async def send_message(
             detail=f"Server error: {str(e)}"
         )
     # send_message 接口中事务处理完成后添加以下代码
-    #redis_client.delete(f"history:{session_id}")  # 删除当前会话的历史缓存
+    redis_client.delete(f"history:{session_id}")  # 删除当前会话的历史缓存
