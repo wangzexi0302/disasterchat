@@ -390,18 +390,10 @@ async def send_message(
 ) -> StreamingResponse:
     try:
         # ----------------------
-        # 1. 会话验证（Redis优先）
+        # 1. 会话验证
         # ----------------------
         session_id = request.sessionId
-        session_key = f"session:{session_id}"
-
-        # 快速验证会话（Redis）
         '''
-        if not await redis_client.exists(session_key):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid session ID"
-            )
         # 验证数据库会话
         db_session = db.query(DBSession).filter(DBSession.id == session_id).first()
         if not db_session:
@@ -410,9 +402,6 @@ async def send_message(
         #else:
             #db.close()
         '''
-
-        
-
         # ----------------------
         # 2. 解析消息内容
         # ----------------------
@@ -442,8 +431,6 @@ async def send_message(
                 detail="Invalid content type. Expected str or list"
             )
         logger.info(f"收到消息: {text_content}")  # 关键调试日志
-
-
         # ----------------------
         # 3. 数据库事务处理
         # ----------------------
@@ -466,7 +453,6 @@ async def send_message(
                 db.add(chat_message)
                 db.flush()  # 确保chat_message.id生成
 
-
                 # 验证并关联图片
                 image_paths = []
                 for img_id in image_ids:
@@ -484,7 +470,6 @@ async def send_message(
                         image_id=img_id
                     ))
                 logging.info(f"成功插入消息: {chat_message.id}, 关联图片数量: {len(image_ids)}")
-
             #db.commit()  # 手动提交
 
         except HTTPException as e:
@@ -854,7 +839,8 @@ async def send_message(
                        
         else:
             async def sse_stream_generator() -> Generator[str, None, None]:
-                db = next(get_db())  # 新会话
+                #db = next(get_db())  # 新会话
+                pause_flag_key = f"pause_flag:{session_id}"  # 定义暂停标志键
                 try:
                     # 选择代理
                     if is_multimodal:
@@ -862,8 +848,12 @@ async def send_message(
                     else:
                         stream_response = agent_service.run_stream(llm_messages, model="qwen2:7b")
 
-                    message_id = str(uuid.uuid4())
+                    # 如果是同步生成器，包装为异步生成器
+                    if not hasattr(stream_response, "__aiter__"):
+                        stream_response = async_generator_wrapper(stream_response)
 
+                    message_id = str(uuid.uuid4())
+                    
                     # 创建AI消息记录
                     assistant_message = ChatMessage(
                         id=message_id,
@@ -874,7 +864,12 @@ async def send_message(
                     )
                     db.add(assistant_message)
 
-                    for chunk in stream_response:
+                    async for chunk in stream_response:
+                        # 检查暂停标志
+                        if redis_client.get(pause_flag_key):
+                            logger.info(f"会话 {session_id} 收到暂停指令，终止流式回复")
+                            break
+                        
                         #logger.info(f"原始 chunk: {chunk}")  # 关键调试日志
                         content = (
                             chunk.get("message", {}).get("content", "")  # Ollama 格式
@@ -891,29 +886,20 @@ async def send_message(
                                 }
                             }
                             # 发送SSE消息
+                            
                             yield f"data: {json.dumps(sse_chunk)}\n\n"
-                            '''
-                            # 推送到Redis供其他客户端接收
-                            redis_client.rpush(
-                                f"messages:{session_id}",
-                                json.dumps({
-                                    "id": message_id,
-                                    "role": "assistant",
-                                    "content": content,
-                                    "attachments": [],
-                                    "created_at": datetime.utcnow().isoformat()
-                                })
-                            )
-                            '''
+                           
                     logger.info("流式回复生成完成")
                     db.commit()
                     yield f"data: {json.dumps({'message_id': message_id, 'data': {'content': '', 'done': True}})}\n\n"
 
-                except Exception as e:
+                except (Exception,BrokenPipeError, ConnectionResetError):
+                    logger.warning("客户端断开，终止流式响应")
                     error_chunk = {
-                        "error": str(e),
+                        "error": str(Exception),
                         "detail": "Inference failed"
                     }
+                    
                     yield f"data: {json.dumps(error_chunk)}\n\n"
 
             return StreamingResponse(
@@ -921,31 +907,36 @@ async def send_message(
                 media_type="text/event-stream"
             )
 
-        # ----------------------
-        # 6. 保存用户消息到Redis
-        # ----------------------
-        '''
-        if redis_client:
-            redis_client.rpush(
-                f"messages:{session_id}",
-                json.dumps({
-                    "id": chat_message.id,
-                    "role": request.message.role,
-                    "content": text_content,
-                    "attachments": image_paths,
-                    "created_at": datetime.utcnow().isoformat()
-                })
-            )
-        '''
 
     except HTTPException as e:
         db.rollback()  # 回滚事务
         raise e
+
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Server error: {str(e)}"
         )
-    # send_message 接口中事务处理完成后添加以下代码
-    #redis_client.delete(f"history:{session_id}")  # 删除当前会话的历史缓存
+
+# 对话暂停接口
+@router.post("/chat/pause")
+async def pause_session(
+    session_id: str = Form(...)
+):
+    try:
+        # 在 Redis 中标记会话需要暂停
+        redis_client.set(f"pause_flag:{session_id}","1",5)
+        logger.info(f"会话 {session_id} 收到暂停指令，暂停请求已发送")
+        return {"status": "success", "message": "已发送暂停请求，当前会话请求将逐步终止"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"暂停操作失败: {str(e)}"
+        )
+    
+# 将同步生成器包装为异步生成器
+async def async_generator_wrapper(sync_gen):
+    for chunk in sync_gen:
+        yield chunk
+        await asyncio.sleep(0)  # 模拟异步行为，避免阻塞事件循环
