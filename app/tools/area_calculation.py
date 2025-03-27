@@ -3,10 +3,10 @@ import tempfile
 from collections import OrderedDict
 from app.tools.base import Tool
 from typing import Dict, Any
-import requests
+import os
 import cv2
 import numpy as np
-from utils import load_image, save_image, print_mask_color
+from app.tools.utils import load_image, save_image, print_mask_color
 import matplotlib.pyplot as plt
 
 
@@ -43,22 +43,22 @@ class AreaCalculation(Tool):
         return {
             "post_img_path": {
                 "type": "string",
-                "description": "灾后遥感影像图",
+                "description": "灾后遥感影像图路径",
                 "required": True
             },
             "change_detection_mask_path": {
                 "type": "string",
-                "description": "变化检测掩码图",
+                "description": "受灾前后变化检测的掩码图路径",
                 "required": True
             },
             "pre_segmentation_mask_path": {
                 "type": "string",
-                "description": "灾前语义分割掩码图",
+                "description": "灾前语义分割掩码图路径",
                 "required": True
             },
             "post_segmentation_mask_path": {
                 "type": "string",
-                "description": "灾后语义分割掩码图",
+                "description": "灾后语义分割掩码图路径",
                 "required": True
             }
         }
@@ -139,7 +139,7 @@ class AreaCalculation(Tool):
 
         return damage_areas
 
-    def execute(self,pos_img_path: str, change_detection_mask_path: str,
+    def execute(self,post_img_path: str, change_detection_mask_path: str,
                 pre_segmentation_mask_path: str, post_segmentation_mask_path: str):
         """
         计算各类地物的受灾面积，并进行可视化。
@@ -147,9 +147,16 @@ class AreaCalculation(Tool):
         :param change_detection_mask_path: 建筑物变化检测的掩码图像路径
         :param pre_segmentation_mask_path: 灾前语义分割的掩码图像路径
         :param post_segmentation_mask_path: 灾后语义分割的掩码图像路径
-        :param pos_img_path: 受灾后的遥感图像路径
+        :param post_img_path: 受灾后的遥感图像路径
         """
-        img_post = load_image(pos_img_path)
+        root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+        post_img_path = os.path.join(root_path, post_img_path)
+        change_detection_mask_path = os.path.join(root_path, change_detection_mask_path)
+        pre_segmentation_mask_path = os.path.join(root_path, pre_segmentation_mask_path)
+        post_segmentation_mask_path = os.path.join(root_path, post_segmentation_mask_path)
+
+        img_post = load_image(post_img_path)
         change_detection_mask_img = load_image(change_detection_mask_path)
         pre_segmentation_mask_img = load_image(pre_segmentation_mask_path)
         post_segmentation_mask_img = load_image(post_segmentation_mask_path)
@@ -176,12 +183,20 @@ class AreaCalculation(Tool):
         road_damage_area= road_damage_area['road'][1]
 
         damage_area = {'building': building_damage_area, 'water': water_damage_area, 'road': road_damage_area}
-        print(damage_area)
+        # print(damage_area)
 
         # 灾后受损可视化
         damage_img_path = self._visualize_damage(img_post, change_detection_mask_img, post_segmentation_mask_img, overlay)
 
-        return damage_area, damage_img_path
+        # 构造返回值
+        message = {"role": "tool",
+                   "name": self.name,
+                   "content": [
+                        {'type': 'text', 'text': f'{damage_area}', 'text_description': '灾后各类地物的受灾面积统计'},
+                        {'type': 'image', 'image_data': f'{damage_img_path}', 'image_description': '灾后各类地物受灾情况可视化影像图'}
+                        ]}
+
+        return message
 
 
 if __name__ == '__main__':

@@ -11,6 +11,7 @@ def print_mask_color(mask_path):
     for color in unique_colors:
         print(f"Color: {color}")
 
+
 def load_image(image_path: str) -> np.ndarray:
     """
     加载影像
@@ -64,13 +65,11 @@ def load_image_as_base64(image_path):
 
 def save_image(image_data: np.ndarray):
     """将图像数据保存为临时文件"""
-    temp_files = []
     try:
         # 创建临时文件保存结果图像
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
             temp_path = temp_file.name
             cv2.imwrite(temp_path, image_data)
-            temp_files.append(temp_path)
-        return temp_files
+        return temp_path
     except Exception as e:
         raise ValueError("保存图像数据失败！")
