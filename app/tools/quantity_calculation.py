@@ -120,10 +120,10 @@ class QuantityCalculation(Tool):
             mask_bin = cv2.inRange(mask_img, np.array(color), np.array(color))
 
             # 进行连通域分析，获取独立建筑数量
-            num_labels, _, _, _ = cv2.connectedComponentsWithStats(mask_bin, connectivity=8)
+            num, _, _, _ = cv2.connectedComponentsWithStats(mask_bin, connectivity=8)
 
             # 记录建筑数量（去掉背景区域）
-            damage_counts[damage_type] = num_labels - 1 if num_labels > 1 else 0
+            damage_counts[damage_type] = num - 1 if num > 1 else 0
 
         return damage_counts
 
@@ -143,11 +143,13 @@ class QuantityCalculation(Tool):
 
         return damage_counts, statistics_img_path, damage_img_path
 
-# 示例
-mask_path = r'../../demo_data/demo_1/change_detection_mask.png'
-img_path = r'../../demo_data/demo_1/post.png'
 
-quantity_calculation = QuantityCalculation()
-result = quantity_calculation.execute(mask_path, img_path)
+if __name__ == '__main__':
+    # 示例
+    mask_path = r'../../demo_data/demo_1/change_detection_mask.png'
+    img_path = r'../../demo_data/demo_1/post.png'
 
-print(result)
+    quantity_calculation = QuantityCalculation()
+    result = quantity_calculation.execute(mask_path, img_path)
+
+    print(result)
