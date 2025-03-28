@@ -210,12 +210,12 @@ class PathCalculation(Tool):
 
 if __name__ == '__main__':
     # 示例
-    mask_path = r'../../demo_data/pre_segmentation_mask.png'
-    img_path = r'../../demo_data/pre.png'
+    mask_path = 'demo_data/pre_segmentation_mask.png'
+    img_path = 'demo_data/pre.png'
     point_A = (400, 600)  # 用户指定的 A 点（像素坐标）
     point_B = (900, 1000)  # 用户指定的 B 点（像素坐标）
 
     path_calculation = PathCalculation()
-    result = path_calculation.execute(mask_path, img_path, point_A, point_B)
+    result = path_calculation.execute(img_path, mask_path, point_A, point_B)
 
     print(result)

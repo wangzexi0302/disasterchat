@@ -201,10 +201,10 @@ class AreaCalculation(Tool):
 
 if __name__ == '__main__':
     # 示例
-    change_detection_mask_path = r'../../demo_data/demo_1/change_detection_mask.png'
-    pre_segmentation_mask_path = r'../../demo_data/demo_1/pre_segmentation_mask.png'
-    post_segmentation_mask_path = r'../../demo_data/demo_1/post_segmentation_mask.png'
-    post_img_path = r'../../demo_data/demo_1/post.png'
+    change_detection_mask_path = 'demo_data/change_detection_mask.png'
+    pre_segmentation_mask_path = 'demo_data/pre_segmentation_mask.png'
+    post_segmentation_mask_path = 'demo_data/post_segmentation_mask.png'
+    post_img_path = r'demo_data/post.png'
 
     area_calculation = AreaCalculation()
     result = area_calculation.execute(post_img_path, change_detection_mask_path,

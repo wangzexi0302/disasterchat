@@ -1,9 +1,11 @@
+# -*- coding: utf-8 -*-
 import copy
 import ollama
 import json
 import logging
 from typing import List, Dict, Any, Generator
-from app.tools import Tool, utils
+from app.tools.base import Tool
+from app.tools import utils
 from app.tools.quantity_calculation import QuantityCalculation
 from app.tools.path_calculation import PathCalculation
 from app.tools.area_calculation import AreaCalculation
@@ -21,8 +23,9 @@ class ImageAnalysisAgent:
     """
 
     def __init__(self, model="qwen2.5"):
-        self.available_tools = [QuantityCalculation(), PathCalculation(), AreaCalculation()]
         self.model = model
+        self.temp_files = []
+        self.available_tools = [QuantityCalculation(), PathCalculation(), AreaCalculation()]
         logger.info(f"ImageAnalysisAgent初始化，加载了{len(self.available_tools)}个工具")
 
     def _get_function_definitions(self) -> List[Dict[str, Any]]:
@@ -61,12 +64,11 @@ class ImageAnalysisAgent:
             if isinstance(content, list):
                 logger.debug(f"消息 {i + 1} 包含多模态内容")
                 text_parts = []
-                image_paths = []
 
                 for item in content:
                     if isinstance(item, dict) and item.get("type") == "image":
                         image_path = utils.process_image(item.get("image_data", ""))
-                        image_paths.append(image_path)
+                        self.temp_files.append(image_path)
                         temp_files.append(image_path)
                     elif isinstance(item, dict) and item.get("type") == "text":
                         text_parts.append(item.get("text", ""))
@@ -93,10 +95,10 @@ class ImageAnalysisAgent:
         # 1. 从消息中获取遥感影像
         processed_messages, image_paths = self._process_messages(messages)
 
-        # assert len(image_paths) == 2, "需要两张影像，一个受灾前影像，一个受灾后影像"
+        # assert len(image_paths) >=2, "至少需要两张影像，一个受灾前影像，一个受灾后影像"
 
-        # pre_image_path = image_paths[0]
-        # post_image_path = image_paths[1]
+        # pre_image_path = image_paths[-2]
+        # post_image_path = image_paths[-1]
 
         # demo数据
         pre_image_path = os.path.join('demo_data', 'pre.png')
@@ -249,7 +251,9 @@ class ImageAnalysisAgent:
             for res in tools_response:
                 for item in res['content']:
                     if isinstance(item, dict) and item.get("type") == "image":
-                        image_data = utils.load_image_as_base64(item.get("image_data", ""))
+                        image_path = item.get("image_data", "")
+                        self.temp_files.append(image_path)
+                        image_data = utils.load_image_as_base64(image_path)
                         item['image_data'] = image_data
                         image_result.append(item)
             answer_message['content'].extend(image_result)
@@ -258,6 +262,16 @@ class ImageAnalysisAgent:
         except Exception as e:
             logger.error(f"结果生成失败：{str(e)}", exc_info=True)
             raise
+        finally:
+            # 清理临时文件
+            for file_path in self.temp_files:
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        logger.debug(f"已删除临时文件: {file_path}")
+                    except Exception as e:
+                        logger.warning(f"删除临时文件 {file_path} 失败: {str(e)}")
+            self.temp_files.clear()
 
     def run_stream(self, messages: List[Dict[str, str]]) -> Generator[Dict[str, Any], None, None]:
         # 1-4. 调用工具处理任务
@@ -309,3 +323,13 @@ class ImageAnalysisAgent:
         except Exception as e:
             logger.error(f"流式模型推理失败: {str(e)}", exc_info=True)
             raise
+        finally:
+            # 清理临时文件
+            for file_path in self.temp_files:
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        logger.debug(f"已删除临时文件: {file_path}")
+                    except Exception as e:
+                        logger.warning(f"删除临时文件 {file_path} 失败: {str(e)}")
+            self.temp_files.clear()

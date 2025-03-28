@@ -160,10 +160,10 @@ class QuantityCalculation(Tool):
 
 if __name__ == '__main__':
     # 示例
-    mask_path = r'../../demo_data/change_detection_mask.png'
-    img_path = r'../../demo_data/post.png'
+    mask_path = 'demo_data/change_detection_mask.png'
+    img_path = 'demo_data/post.png'
 
     quantity_calculation = QuantityCalculation()
-    result = quantity_calculation.execute(mask_path, img_path)
+    result = quantity_calculation.execute(img_path, mask_path)
 
     print(result)

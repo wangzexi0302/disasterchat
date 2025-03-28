@@ -3,6 +3,7 @@ from app.tools.base import Tool
 from app.tools.weather import GetWeatherTool
 from app.tools.disaster_info import GetDisasterInfoTool
 from app.tools.call_multimodel import CallMultiModel
+# from app.tools.call_image_analysis import CallImageAnalysis
 
 
 # 导出所有可用工具
@@ -12,7 +13,8 @@ available_tools = [
     ]
 
 models = [
-    CallMultiModel()
+    CallMultiModel(),
+    # CallImageAnalysis()
 ]
 
 __all__ = ["Tool", "available_tools", "GetWeatherTool", "GetDisasterInfoTool", "models"]
