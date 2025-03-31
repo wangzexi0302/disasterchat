@@ -18,9 +18,11 @@ class CallMultiModel(Tool):
             "message": {
                 "type": "string",
                 "description": "用户输入的图片和历史消息",
-                "required": False
-            }
+                "required": True
+            },
         }
+    
+    
     
     def execute(self, message: str) -> str:
         agent = MultiModalAgent()
