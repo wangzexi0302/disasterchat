@@ -3,6 +3,7 @@ from app.tools.base import Tool
 from app.tools.weather import GetWeatherTool
 from app.tools.disaster_info import GetDisasterInfoTool
 from app.tools.call_multimodel import CallMultiModel
+from app.tools.call_qaagent import CallQAAgent
 # from app.tools.call_image_analysis import CallImageAnalysis
 
 
@@ -14,6 +15,7 @@ available_tools = [
 
 models = [
     CallMultiModel(),
+    CallQAAgent()
     # CallImageAnalysis()
 ]
 
