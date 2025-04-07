@@ -1,6 +1,6 @@
-from sqlalchemy import Column, String, DateTime, ForeignKey
+from sqlalchemy import Column, String, DateTime, ForeignKey,Integer
 from sqlalchemy.orm import relationship, declarative_base
-from datetime import datetime
+from datetime import datetime,timezone
 import uuid
 
 # 声明基类
@@ -34,8 +34,7 @@ class ChatMessage(Base):
     role = Column(String(20), nullable=False)  # 消息角色：user/assistant
     content = Column(String(2000))  # 文本内容
     attachments = Column(String(255))  # 存储图片ID列表（JSON格式，如["img_1", "img_2"]）
-    created_at = Column(DateTime, default=datetime.utcnow)  # 消息时间
-    
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))  # 时区感知时间戳
     # 关系：消息属于某个会话
     session = relationship("DBSession", back_populates="messages")
     
