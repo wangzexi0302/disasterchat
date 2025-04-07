@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 from app.tools.base import Tool
 from typing import Dict, Any
-import requests
+import os
 import cv2
 import numpy as np
 import networkx as nx
 from scipy.spatial import KDTree
+<<<<<<< HEAD
 from .utils import load_image, save_image
+=======
+from app.tools.utils import load_image, save_image
+>>>>>>> c90fc095383ff1b2ab32ad4099076c36dc63cf08
 
 
 class PathCalculation(Tool):
@@ -18,19 +22,19 @@ class PathCalculation(Tool):
 
     @property
     def description(self) -> str:
-        return "路径计算，获得道路可达性状况"
+        return "评估给定起始点的道路是否可通行"
 
     @property
     def parameters(self) -> Dict[str, Any]:
         return {
-            "img_path": {
+            "pre_or_post_img_path": {
                 "type": "string",
-                "description": "遥感影像图",
+                "description": "灾前或灾后遥感影像图路径",
                 "required": True
             },
-            "mask_path": {
+            "pre_or_post_segmentation_mask_path": {
                 "type": "string",
-                "description": "语义分割掩码图",
+                "description": "灾前或灾后语义分割掩码图路径",
                 "required": True
             },
             "point_A": {
@@ -128,11 +132,11 @@ class PathCalculation(Tool):
 
         # 保存结果
         output_path = save_image(image)
-        print(f"路径可视化已保存至: {output_path}")
+        # print(f"路径可视化已保存至: {output_path}")
 
         return output_path
 
-    def _check_path_accessibility(self, mask_path, img_path, point_A, point_B):
+    def _check_path_accessibility(self, mask_path, img_path, point_A, point_B, gsd=2):
         """
         评估 A 点到 B 点是否可通行，并可视化路径。
 
@@ -166,7 +170,7 @@ class PathCalculation(Tool):
                     mask_output_path = self._visualize_path(mask_img, path, point_A_nearest, point_B_nearest)
                     img_out_path = self._visualize_path(ori_img, path, point_A_nearest, point_B_nearest)
 
-                    return f"A 到 B 可通行，路径长度: {len(path)} 像素", mask_output_path, img_out_path
+                    return f"A 到 B 可通行，路径长度: {len(path)*gsd} 米", mask_output_path, img_out_path
                 except nx.NetworkXNoPath:
                     # 可视化A、B点
                     mask_output_path = self._visualize_path(mask_img, None, point_A_nearest, point_B_nearest)
@@ -182,27 +186,40 @@ class PathCalculation(Tool):
         else:
             return "A 或 B 无法映射到道路像素，无法评估", None, None
 
-    def execute(self, img_path: str, mask_path: str, point_A: tuple, point_B: tuple):
+    def execute(self, pre_or_post_img_path: str, pre_or_post_segmentation_mask_path: str, point_A: tuple, point_B: tuple):
         """
         评估 A 点到 B 点是否可通行，并可视化路径。
 
-        :param img_path: 遥感影像路径
-        :param mask_path: 语义分割的掩码图路径
+        :param pre_or_post_img_path: 遥感影像路径
+        :param pre_or_post_segmentation_mask_path: 语义分割的掩码图路径
         :param point_A: 用户输入的 A 点 (像素坐标)
         :param point_B: 用户输入的 B 点 (像素坐标)
         """
+        root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-        return self._check_path_accessibility(mask_path, img_path, point_A, point_B)
+        img_path = os.path.join(root_path, pre_or_post_img_path)
+        mask_path = os.path.join(root_path, pre_or_post_segmentation_mask_path)
 
+        acc_res, mask_vis_path, img_vis_path = self._check_path_accessibility(mask_path, img_path, point_A, point_B)
+
+        # 构造返回值
+        message = {"role": "tool",
+                   "name": self.name,
+                   "content": [
+                        {'type': 'text', 'text': f'{acc_res}', 'text_description': '道路通行情况'},
+                        {'type': 'image', 'image_data': f'{mask_vis_path}', 'image_description': '道路通行情况可视化掩码图'},
+                        {'type': 'image', 'image_data': f'{img_vis_path}', 'image_description': '道路通行情况可视化影像图'}]}
+
+        return message
 
 if __name__ == '__main__':
     # 示例
-    mask_path = r'../../demo_data/demo_1/pre_segmentation_mask.png'
-    img_path = r'../../demo_data/demo_1/pre.png'
+    mask_path = 'demo_data/pre_segmentation_mask.png'
+    img_path = 'demo_data/pre.png'
     point_A = (400, 600)  # 用户指定的 A 点（像素坐标）
     point_B = (900, 1000)  # 用户指定的 B 点（像素坐标）
 
     path_calculation = PathCalculation()
-    result = path_calculation.execute(mask_path, img_path, point_A, point_B)
+    result = path_calculation.execute(img_path, mask_path, point_A, point_B)
 
     print(result)

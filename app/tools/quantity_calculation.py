@@ -3,10 +3,14 @@ import tempfile
 from collections import OrderedDict
 from app.tools.base import Tool
 from typing import Dict, Any
-import requests
+import os
 import cv2
 import numpy as np
+<<<<<<< HEAD
 from .utils import load_image, save_image, print_mask_color
+=======
+from app.tools.utils import load_image, save_image, print_mask_color
+>>>>>>> c90fc095383ff1b2ab32ad4099076c36dc63cf08
 import matplotlib.pyplot as plt
 
 
@@ -28,19 +32,19 @@ class QuantityCalculation(Tool):
 
     @property
     def description(self) -> str:
-        return "对受灾建筑物各类受损情况进行统计"
+        return "对灾后建筑物不同受损程度进行统计"
 
     @property
     def parameters(self) -> Dict[str, Any]:
         return {
-            "img_path": {
+            "post_img_path": {
                 "type": "string",
-                "description": "遥感影像图",
+                "description": "灾后遥感影像图路径",
                 "required": True
             },
-            "mask_path": {
+            "change_detection_mask_path": {
                 "type": "string",
-                "description": "语义分割掩码图",
+                "description": "受灾前后变化检测的掩码图路径",
                 "required": True
             }
         }
@@ -69,7 +73,7 @@ class QuantityCalculation(Tool):
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
             temp_path = temp_file.name
             plt.savefig(temp_path, bbox_inches='tight', pad_inches=0.1, dpi=500)
-        print(f"路径可视化已保存至: {temp_path}")
+        # print(f"可视化已保存至: {temp_path}")
         plt.close()
 
         return temp_path
@@ -127,29 +131,43 @@ class QuantityCalculation(Tool):
 
         return damage_counts
 
-    def execute(self, img_path: str, mask_path: str):
+    def execute(self, post_img_path: str, change_detection_mask_path: str):
         """
-        评估 A 点到 B 点是否可通行，并可视化路径。
+        对灾后建筑物受损情况进行分析和统计
 
-        :param img_path: 受灾后的遥感图像路径
-        :param mask_path: 语义分割的掩码图路径
+        :param post_img_path: 受灾后的遥感图像路径
+        :param change_detection_mask_path: 受灾前后变化检测的掩码图路径
         """
-        img_post = load_image(img_path)
-        mask_img = load_image(mask_path)
+        root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+        post_img_path = os.path.join(root_path, post_img_path)
+        change_detection_mask_path = os.path.join(root_path, change_detection_mask_path)
+
+        img_post = load_image(post_img_path)
+        mask_img = load_image(change_detection_mask_path)
 
         damage_counts = self._count_building_damage(mask_img)
         statistics_img_path = self._visualize_damage_statistics(damage_counts)
         damage_img_path = self._visualize_damage(img_post, mask_img)
 
-        return damage_counts, statistics_img_path, damage_img_path
+        # 构造返回值
+        message = {"role": "tool",
+                   "name": self.name,
+                   "content": [
+                        {'type': 'text', 'text': f'{dict(damage_counts)}', 'text_description': '灾后建筑物受损情况统计'},
+                        {'type': 'image', 'image_data': f'{statistics_img_path}', 'image_description': '灾后建筑物受损情况统计可视化柱状图'},
+                        {'type': 'image', 'image_data': f'{damage_img_path}', 'image_description': '灾后建筑物受损情况可视化影像图'}
+                   ]}
+
+        return message
 
 
 if __name__ == '__main__':
     # 示例
-    mask_path = r'../../demo_data/demo_1/change_detection_mask.png'
-    img_path = r'../../demo_data/demo_1/post.png'
+    mask_path = 'demo_data/change_detection_mask.png'
+    img_path = 'demo_data/post.png'
 
     quantity_calculation = QuantityCalculation()
-    result = quantity_calculation.execute(mask_path, img_path)
+    result = quantity_calculation.execute(img_path, mask_path)
 
     print(result)
