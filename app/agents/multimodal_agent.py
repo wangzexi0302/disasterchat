@@ -144,6 +144,12 @@ class MultiModalAgent:
         logger.info(f"流式运行多模态推理，使用模型: {model_name}")
 
         processed_messages, image_paths = self._process_messages(messages)
+        #增加预设词
+        additional_message = {
+            "role": "user",  # 根据实际情况调整角色
+            "content": "务必全程用中文回答"
+            }
+        processed_messages.append(additional_message)
 
         try:
             logger.info("开始流式调用Ollama多模态模型")

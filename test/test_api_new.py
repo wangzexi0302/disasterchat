@@ -243,19 +243,32 @@ def test_prompts_template():
     print([t["name"] for t in templates])
 
 
+def test_get_session_title_summary(session_id):
+    """测试获取会话标题总结"""
+    print_separator("获取会话标题总结")
+    
+    # 测试存在用户和AI消息的情况
+    print_separator("测试存在用户和AI消息")
+    url = f"{BASE_URL}/api/session/{session_id}/title_summary"
+    response = requests.get(url)
+    data = validate_response(response, expected_status=200, request_url=url)
+    assert len(data["summary"]) <= 10, f"总结超过10字：{data['summary']}"
+    print(f"组合总结结果：{data['summary']}")
+
 # ======================
 # 执行测试
 # ======================
 if __name__ == "__main__":
     try:
         # 1. 创建会话
-        session_id = test_create_session()
+        #session_id = test_create_session()
 
         # 2. 上传图片（可选）
         #image_id = test_upload_image(session_id) if os.path.exists(TEST_IMAGE_PATH) else None
 
         # 3. 发送纯文本消息
-        test_send_text_message(session_id)
+        test_send_text_message("6623ac9d-454f-4eb3-9f63-31814d4e2fc6")
+
 
         # 4. 发送多模态消息（需图片上传成功）
         #if image_id:
@@ -265,10 +278,13 @@ if __name__ == "__main__":
         #test_get_history_list()
 
         #6. 测试获取历史消息（存在的会话）
-        #test_get_history_detail_exists(session_id)
+        #test_get_history_detail_exists("3bad6f94-1bc3-43f7-aaca-8155c0ca8586")
 
         # 6. 测试预设提示
         #test_prompts_template()
+
+        # 7 测试获取会话标题总结
+        #test_get_session_title_summary("111756cc-7a5f-44c0-a079-569cc5b18d4a")
 
         #print("\n所有测试通过 ✅")
 

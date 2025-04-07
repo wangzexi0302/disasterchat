@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import networkx as nx
 from scipy.spatial import KDTree
-from utils import load_image, save_image
+from .utils import load_image, save_image
 
 
 class PathCalculation(Tool):

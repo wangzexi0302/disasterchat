@@ -6,9 +6,8 @@ from typing import Dict, Any
 import requests
 import cv2
 import numpy as np
-from utils import load_image, save_image, print_mask_color
+from .utils import load_image, save_image, print_mask_color
 import matplotlib.pyplot as plt
-
 
 class AreaCalculation(Tool):
     """面积计算工具"""

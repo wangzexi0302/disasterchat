@@ -20,7 +20,7 @@
    conda activate disasterchat
    ```
 
-3. 使用Poetry来管理包环境:
+3. 使用Poetry来管理包环境: 
    ```bash
    pip install poetry
       # 在项目根目录下执行

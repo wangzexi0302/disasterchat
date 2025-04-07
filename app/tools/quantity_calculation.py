@@ -6,14 +6,14 @@ from typing import Dict, Any
 import requests
 import cv2
 import numpy as np
-from utils import load_image, save_image, print_mask_color
+from .utils import load_image, save_image, print_mask_color
 import matplotlib.pyplot as plt
 
 
 class QuantityCalculation(Tool):
     """数量计算工具"""
 
-    def __init__(self):
+    def __init__(self): 
         # 定义颜色对应的损伤类别
         self.color_map = OrderedDict({
             "no-damage": (0, 255, 0),  # 无损伤
