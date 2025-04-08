@@ -3,7 +3,7 @@ import logging
 from typing import Dict, List, Generator, Optional, Any
 import ollama
 from app.api.models import AssistantMessage
-from app.config import Settings
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ class QAAgent:
     
     """
 
-    def __init__(self, model: str=Settings.default_model):
+    def __init__(self, model: str = settings.default_model):
 
         logger.info(f"正在初始化QA-Agent模型：{model}")
         self.model = model

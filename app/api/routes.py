@@ -20,8 +20,8 @@ from fastapi.responses import StreamingResponse # 流式响应
 from app.api.models import ChatRequest, ChatResponse, VLChatMessage,ImageContent,TextContent,SendMessageRequest
 from app.agents.agent_service import AgentService
 from app.agents.multimodal_agent import MultiModalAgent 
-from app.api.database.db_setup import engine
 from app.api.database.models import Base
+from app.api.database.db_setup import engine, create_tables
 import os 
 import logging
 from sqlalchemy import select,delete,desc
@@ -129,7 +129,11 @@ PREDEFINED_TEMPLATES = [
 ]
 
 
-
+# 启动事件：创建表结构（生产环境建议使用 Alembic 迁移，开发环境可直接建表）
+# @router.on_event("startup")
+# async def startup_create_tables():
+#     await create_tables()
+#     print("数据库表结构创建完成")
 
 # 核心接口实现
 #开启新会话
@@ -298,9 +302,10 @@ async def get_history_detail(
             images = await db.execute(image_query)
             images = images.scalars().all()
 
+            two_back_slash = '\\'
             attachments = [
                 ImageAttachment(
-                    url=f"{request_obj.base_url}{img.file_path.replace('\\', '/')}",
+                    url=f"{request_obj.base_url}{img.file_path.replace(two_back_slash, '/')}",
                     type=img.type
                 ) for img in images
             ]
@@ -505,7 +510,7 @@ async def send_message(
                         await db.commit()  # 立即提交事务
 
                     # 转换同步生成器为异步生成器
-                    stream_response = agent_service.run_stream(llm_messages, model="qwen2:7b")
+                    stream_response = agent_service.run_stream(llm_messages, model="qwen2.5")
                     async_gen = async_generator_wrapper(stream_response)
 
                     image_url = str(request_obj.url_for('static', path="test_image_2.png"))
@@ -514,7 +519,7 @@ async def send_message(
                     # 发送图片
                     for image in image_list:
                         image_id = generate_image_id(image_url)
-                        yield f"data: {json.dumps({
+                        yield f"""data: {json.dumps({
                             'message_id': message_id,
                             'data': {
                                 'done': False,
@@ -522,7 +527,7 @@ async def send_message(
                                 'image_id': image_id,
                                 'type': 'post'
                             }
-                        })}\n\n"
+                        })}\n\n"""
 
                     # 处理LLM响应
                     async for chunk in async_gen:
@@ -537,13 +542,13 @@ async def send_message(
                                 assistant_message.content += content
                                 await db.commit()  # 立即提交事务
 
-                            yield f"data: {json.dumps({
+                            yield f"""data: {json.dumps({
                                 'message_id': message_id,
                                 'data': {
                                     'content': content,
                                     'done': chunk.get('done', False)
                                 }
-                            })}\n\n"
+                            })}\n\n"""
 
                     # 最终提交事务
                     async with db.begin() as final_transaction:
@@ -597,13 +602,13 @@ async def send_message(
                             assistant_message.content += chunk
                             await db.commit()
 
-                        yield f"data: {json.dumps({
+                        yield f"""data: {json.dumps({
                             'message_id': message_id,
                             'data': {
                                 'content': chunk,
                                 'done': i+chunk_size >= len(response_text)
                             }
-                        })}\n\n"
+                        })}\n\n"""
                         await asyncio.sleep(1)
 
                     # 最终提交事务
@@ -644,13 +649,13 @@ async def send_message(
                         async with db.begin() as update_transaction:
                             assistant_message.content += chunk
                             await db.commit()
-                        yield f"data: {json.dumps({
+                        yield f"""data: {json.dumps({
                             'message_id': message_id,
                             'data': {
                                 'content': chunk,
                                 'done': False
                             }
-                        })}\n\n"
+                        })}\n\n"""
                         await asyncio.sleep(1)
 
                     image_url = str(request_obj.url_for('static', path="test_image_3.png"))
@@ -706,13 +711,13 @@ async def send_message(
                         async with db.begin() as update_transaction:
                             assistant_message.content += chunk
                             await db.commit()
-                        yield f"data: {json.dumps({
+                        yield f"""data: {json.dumps({
                             'message_id': message_id,
                             'data': {
                                 'content': chunk,
                                 'done': False
                             }
-                        })}\n\n"
+                        })}\n\n"""
                         await asyncio.sleep(1)
 
                     image_url = str(request_obj.url_for('static', path="test_image_4.png"))
@@ -768,13 +773,13 @@ async def send_message(
                         async with db.begin() as update_transaction:
                             assistant_message.content += chunk
                             await db.commit()
-                        yield f"data: {json.dumps({
+                        yield f"""data: {json.dumps({
                             'message_id': message_id,
                             'data': {
                                 'content': chunk,
                                 'done': i + chunk_size >= len(response_text)
                             }
-                        })}\n\n"
+                        })}\n\n"""
                         await asyncio.sleep(1)
 
                     image_url = str(request_obj.url_for('static', path="test_image_5.png"))
@@ -830,13 +835,13 @@ async def send_message(
                         async with db.begin() as update_transaction:
                             assistant_message.content += chunk
                             await db.commit()
-                        yield f"data: {json.dumps({
+                        yield f"""data: {json.dumps({
                             'message_id': message_id,
                             'data': {
                                 'content': chunk,
                                 'done': i + chunk_size >= len(response_text)
                             }
-                        })}\n\n"
+                        })}\n\n"""
                         await asyncio.sleep(1)
                     image_url = str(request_obj.url_for('static', path="test_image_3.png"))
                     image_list = [image_url]
@@ -891,13 +896,13 @@ async def send_message(
                         async with db.begin() as update_transaction:
                             assistant_message.content += chunk
                             await db.commit()
-                        yield f"data: {json.dumps({
+                        yield f"""data: {json.dumps({
                             'message_id': message_id,
                             'data': {
                                 'content': chunk,
                                 'done': False
                             }
-                        })}\n\n"
+                        })}\n\n"""
                         await asyncio.sleep(1)
 
                     image_list = [
@@ -954,7 +959,7 @@ async def send_message(
                     if is_multimodal:
                         stream_response = multimodal_agent.run_stream(llm_messages, model="llava:latest")
                     else:
-                        stream_response = agent_service.run_stream(llm_messages, model="qwen2:7b")
+                        stream_response = agent_service.run_stream(llm_messages, model="qwen2.5")
 
                     # 如果是同步生成器，包装为异步生成器
                     if not hasattr(stream_response, "__aiter__"):
@@ -1059,7 +1064,7 @@ async def get_session_title_summary(session_id: str, db: AsyncSession = Depends(
 
         # 调用 agent 服务获取总结结果
 
-        stream_response = agent_service.run_stream(llm_messages, model="qwen2:7b")
+        stream_response = agent_service.run_stream(llm_messages, model="qwen2.5")
 
         # 如果是同步生成器，包装为异步生成器
         if not hasattr(stream_response, "__aiter__"):

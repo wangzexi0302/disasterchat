@@ -22,7 +22,7 @@
 
 3. 使用Poetry来管理包环境: 
    ```bash
-   pip install poetry
+   pip install poetry==2.1.1
       # 在项目根目录下执行
    poetry install
    ```
