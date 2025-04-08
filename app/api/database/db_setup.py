@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 import logging
+from app.api.database.models import Base  # 导入你的 Base 类
 
 # 数据库连接 URL（修改驱动为异步）
 SQLALCHEMY_DATABASE_URL = "mysql+aiomysql://disasterchat_user:123456@localhost/disasterchat"
@@ -30,3 +31,9 @@ async def get_db():
     """获取异步数据库会话的依赖函数"""
     async with AsyncSessionLocal() as session:
         yield session
+
+# 定义异步建表函数
+async def create_tables():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)  # 关键：通过 run_sync 执行同步建表
+

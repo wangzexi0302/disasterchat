@@ -7,7 +7,7 @@ from pydantic import BaseModel, ValidationError
 # ======================
 # 配置
 # ======================
-BASE_URL = "http://localhost:8000"  # 本地服务地址
+BASE_URL = "http://10.168.208.28:8000"  # 本地服务地址
 TEST_IMAGE_PATH = r"C:\Users\11758\Desktop\disasterchat\test\test_image.png"  # 测试图片路径（需提前准备）
 
 
@@ -261,13 +261,13 @@ def test_get_session_title_summary(session_id):
 if __name__ == "__main__":
     try:
         # 1. 创建会话
-        #session_id = test_create_session()
+        session_id = test_create_session()
 
         # 2. 上传图片（可选）
         #image_id = test_upload_image(session_id) if os.path.exists(TEST_IMAGE_PATH) else None
 
         # 3. 发送纯文本消息
-        test_send_text_message("6623ac9d-454f-4eb3-9f63-31814d4e2fc6")
+        test_send_text_message(session_id)
 
 
         # 4. 发送多模态消息（需图片上传成功）

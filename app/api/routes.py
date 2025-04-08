@@ -20,8 +20,8 @@ from fastapi.responses import StreamingResponse # 流式响应
 from app.api.models import ChatRequest, ChatResponse, VLChatMessage,ImageContent,TextContent,SendMessageRequest
 from app.agents.agent_service import AgentService
 from app.agents.multimodal_agent import MultiModalAgent 
-from app.api.database.db_setup import engine
 from app.api.database.models import Base
+from app.api.database.db_setup import engine, create_tables
 import os 
 import logging
 from sqlalchemy import select,delete,desc
@@ -130,7 +130,11 @@ PREDEFINED_TEMPLATES = [
 ]
 
 
-
+# 启动事件：创建表结构（生产环境建议使用 Alembic 迁移，开发环境可直接建表）
+# @router.on_event("startup")
+# async def startup_create_tables():
+#     await create_tables()
+#     print("数据库表结构创建完成")
 
 # 核心接口实现
 #开启新会话
@@ -300,9 +304,10 @@ async def get_history_detail(
             images = await db.execute(image_query)
             images = images.scalars().all()
 
+            two_back_slash = '\\'
             attachments = [
                 ImageAttachment(
-                    url=f"{request_obj.base_url}{img.file_path.replace('\\', '/')}",
+                    url=f"{request_obj.base_url}{img.file_path.replace(two_back_slash, '/')}",
                     type=img.type
                 ) for img in images
             ]
@@ -599,7 +604,7 @@ async def send_message(
                     if is_multimodal:
                         stream_response = multimodal_agent.run_stream(llm_messages, model="llava:latest")
                     else:
-                        stream_response = agent_service.run_stream(llm_messages, model="qwen2:7b")
+                        stream_response = agent_service.run_stream(llm_messages, model="qwen2.5")
 
                     # 如果是同步生成器，包装为异步生成器
                     if not hasattr(stream_response, "__aiter__"):
@@ -706,7 +711,7 @@ async def get_session_title_summary(session_id: str, db: AsyncSession = Depends(
 
         # 调用 agent 服务获取总结结果
 
-        stream_response = agent_service.run_stream(llm_messages, model="qwen2:7b")
+        stream_response = agent_service.run_stream(llm_messages, model="qwen2.5")
 
         # 如果是同步生成器，包装为异步生成器
         if not hasattr(stream_response, "__aiter__"):
