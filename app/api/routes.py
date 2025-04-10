@@ -136,9 +136,10 @@ PREDEFINED_TEMPLATES = [
 
 # 定义三张参考图片的路径（对应 test/assets 下的 1、2、3 文件夹）
 reference_images = [
-    "test/assests/1/test_image_2.png",
-    "test/assests/2/test_image_3.png",
-    "test/assests/3/test_image_4.png"
+    "test/assests/1/post.png",
+    "test/assests/2/post.png",
+    "test/assests/3/post.png",
+    "test/assests/4/post.png"
 ]
 
 # 启动事件：创建表结构（生产环境建议使用 Alembic 迁移，开发环境可直接建表）
