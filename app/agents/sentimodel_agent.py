@@ -75,7 +75,7 @@ class SentiModelAgent:
         logger.info(f"未找到函数：{name}")
         return None
     
-    def run(self, messages: List[Dict[str,Any]], pic_type: str):
+    def run(self, messages: List[Dict[str,Any]], pic_type: str = 'pre'):
 
         logger.info("运行意图分析模型")
 
