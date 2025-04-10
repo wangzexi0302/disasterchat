@@ -588,13 +588,13 @@ async def send_message(
                             async with db.begin() as update_transaction:
                                 assistant_message.content += chunk
                                 await db.commit()
-                            yield f"data: {json.dumps({
+                            yield f"""data: {json.dumps({
                                 'message_id': message_id,
                                 'data': {
                                     'content': chunk,
                                     'done': False
                                 }
-                            })}\n\n"
+                            })}\n\n"""
                             await asyncio.sleep(0.5)
                     
                     # 处理图片响应
@@ -602,7 +602,7 @@ async def send_message(
                         # 构建完整的URL路径
                         image_url = str(request_obj.url_for('static', path=image_path))
                         image_id = generate_image_id(image_url)
-                        yield f"data: {json.dumps({
+                        yield f"""data: {json.dumps({
                             'message_id': message_id,
                             'data': {
                                 'done': False,
@@ -610,7 +610,7 @@ async def send_message(
                                 'image_id': image_id,
                                 'type': template_config.image_type
                             }
-                        })}\n\n"
+                        })}\n\n"""
                     
                     # 最终提交事务
                     async with db.begin() as final_transaction:
