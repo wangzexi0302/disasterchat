@@ -95,7 +95,7 @@ class MultiModalAgent:
         """
         logger.info(f"运行多模态推理")
 
-        image_paths = get_image_path_by_pictype(pic_type) #根据图片类型获取图片
+        # image_paths = get_image_path_by_pictype(pic_type) #根据图片类型获取图片
 
         ollama_message = [{
             'role': 'user',

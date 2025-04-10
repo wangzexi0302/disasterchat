@@ -8,31 +8,47 @@ from app.agents.summary_agent import SummaryAgent
 
 logger = logging.getLogger(__name__)
 
-system_message = """你是一个专业的灾害分析意图识别Agent。你的职责是准确理解用户在灾害场景中的问题意图，并调用合适的专业工具进行分析。
+SYSTEM_PROMPT = """你是一个专业的灾害分析意图识别与分解Agent。你的职责是准确理解用户在灾害场景中的问题意图，将复杂问题分解为子问题，并为每个子问题调用最合适的专业工具进行分析，请返回结构化的工具调用信息。
 
-# 主要职责
-1. 识别用户消息中的具体意图类型
-2. 提取关键参数并判断应该调用哪个专业工具
-3. 不要试图自己回答专业问题，应交由专业工具处理
+# 问题分解能力
+- 识别用户提问中包含的多个独立问题或需求
+- 将复杂的多层次问题拆分为可独立回答的子问题
+- 确保每个子问题能够被单一工具有效处理
+- 对于连续性或依赖性问题，确保按照逻辑顺序处理
 
-# 可识别的意图类型
-- 变化检测：比较灾前灾后图像的变化情况
-- 道路通畅分析：判断指定路段是否通畅
-- 建筑损毁评估：分析建筑物受损程度
-- 一般灾情概览：对灾区整体情况进行描述
-- 特定区域分析：对用户指定的具体区域进行详细分析
+# 可用工具及使用场景
+1. call_qaagent：回答专业知识和一般问答，当用户询问灾害管理知识、防灾减灾知识、专业术语或一般性问题时使用。
+2. call_multimodel：提供基于影像的粗粒度分析，当用户需要灾害概况、灾害类型识别或总体估计时使用。
+3. call_image_analysis：提供高精度细粒度分析，仅当用户明确要求精确计算，道路可达性、受灾面积统计、建筑物损伤程度等时使用。
+
+# 工具选择指南
+- 默认优先使用简单工具：除非用户明确要求精确分析，否则不要调用call_image_analysis
+- 对于需要概述或灾害类型等高层信息的请求，优先使用call_multimodel
+- 对于不涉及图像分析的知识性问题，使用call_qaagent
+- 如果用户问题模糊或一般性，优先使用call_qaagent，避免不必要的复杂分析
 
 # 工具调用指南
-- 当确定用户意图后，必须调用对应的工具函数进行处理
-- 提取所有必要参数，确保参数格式正确
+- 为每个子问题提取所有必要参数，确保参数格式正确
+- 对于call_multimodel和call_image_analysis，必须确定pic_type参数（pre/post/both），而call_qaagent不需要pic_type参数
+- 调用每个工具时，确保提供提炼后的message参数
 - 如果用户提供的信息不足，可以直接回复询问缺失信息，无需调用工具
+- 不要使用没有定义的工具函数
+
+# 多agent联合处理流程
+- 当识别到多个子问题时，为每个子问题独立选择合适的工具
+- 可以针对不同方面的问题同时调用不同工具
+- 例如："分析这次洪灾的受灾面积并介绍洪灾防御知识"可分解为:
+  1. 调用call_image_analysis分析受灾面积(图像分析)
+  2. 调用call_qaagent获取洪灾防御知识(知识问答)
+- 保持子问题之间的逻辑关系，确保结果可以被整合
 
 # 输出格式要求
-- 你不需要自己生成回答，只需调用正确工具
+- 你不需要自己生成回答，只需调用正确工具处理每个子问题
 - 你的响应将由SummaryAgent进行整合和优化
-- 当无法确定意图时，请说明原因而不是猜测
+- 当无法确定意图时，请使用call_qaagent处理问题
+- 对于复杂问题，可以返回多个工具调用
 
-记住，你的核心任务是识别意图并精确调用工具，专业分析结果将由工具函数及SummaryAgent负责生成。
+记住，你的任务是选择最适合用户需求的工具，而不是选择最高级的工具。始终遵循"够用即可"的原则，同时确保所有问题都得到妥善处理。
 """
 
 class SentiModelAgent:
@@ -78,26 +94,19 @@ class SentiModelAgent:
         #添加系统提示
         system_message = {
             "role": "system",
-            "content": (
-                "你是一个专注于灾害管理和应急响应的AI助手。并且可以通过识别图片来分析图片中的灾害信息，"
-                "提供防灾减灾建议，以及获取灾害信息。如果用户的问题需要查询特定信息，"
-                "请使用提供的工具函数来获取信息。不要编造不存在的工具或函数。"
-                "请严格按照markdown的格式输出。"
-            )
+            "content": SYSTEM_PROMPT
         }
 
         ollama_messages.insert(0, system_message)
-        logger.info("Ollama消息构建完成:", ollama_messages)
+        logger.info(f"Ollama消息构建完成:{ollama_messages}")
 
         try:
+            logger.info(f"ollama函数调用定义：{function_defs}")
             first_response = ollama.chat(
                 model=self.model,
                 messages=ollama_messages,
-                options={
-                    "tools": function_defs
-                }
+                tools=function_defs,
             )
-            logger.info("成功获取意图识别Agent响应:", first_response)
         except Exception as e:
             logger.error(f"调用意图识别Agent失败：{str(e)}", exc_info=True)
             raise
@@ -107,27 +116,48 @@ class SentiModelAgent:
         augmented_messages = ollama_messages.copy()
         augmented_messages.append(first_messages)
 
-        #检查是否有agent调用
-        if "tool_calls" in first_messages and first_messages["tool_calls"]:
-            tool_calls = first_messages["tool_calls"]
+        print('first_messages:', first_messages)
+        
+
+        # 检查是否有工具调用
+        if tool_calls := first_messages.get("tool_calls", None):
+            logger.info(f"发现工具调用: {tool_calls}")
+            
             for tool_call in tool_calls:
-                function_name = tool_call["function"]["name"]
-                tool = self._get_tool_by_name(function_name)
-                params = tool_call["function"]["arguments"]
-                params["pic_type"] = pic_type
-                if tool:
-                    logger.info(f"调用Agent：{function_name}")
-                    try:
-                        result = tool.execute(**params)
-                        augmented_messages.append(
-                            {
-                                'role': 'tool',
-                                'name': function_name,
-                                'content': result
-                            }
-                        )
-                    except Exception as e:
-                        logger.error(f"调用Agent失败：{str(e)}", exc_info=True)
+                if fn_call := tool_call.get("function"):
+                    fn_name = fn_call["name"]
+                    fn_args = fn_call["arguments"]
+                
+                    
+                    tool = self._get_tool_by_name(fn_name)
+                    if tool:
+                        logger.info(f"调用工具: {fn_name}, 参数: {fn_args}")
+                        try:
+                            # 执行工具函数并获取结果
+                            result = tool.execute(**fn_args)
+                            
+                            # 如果结果不是字符串，将其序列化为JSON
+                            if not isinstance(result, str):
+                                result = json.dumps(result, ensure_ascii=False)
+                            
+                            # 添加工具响应到消息列表
+                            augmented_messages.append({
+                                "role": "tool",
+                                "name": fn_name,
+                                "content": result
+                            })
+                            logger.info(f"工具 {fn_name} 调用成功")
+                        except Exception as e:
+                            logger.error(f"工具 {fn_name} 调用失败: {str(e)}", exc_info=True)
+                            # 可选：添加错误信息到消息列表
+                            augmented_messages.append({
+                                "role": "tool",
+                                "name": fn_name,
+                                "content": f"错误: {str(e)}"
+                            })
+        
+        logger.info(f"增强后的消息列表: {augmented_messages}")
+
         try:
             augmented_messages = augmented_messages[1:]
             summary_agent = SummaryAgent()

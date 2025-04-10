@@ -12,8 +12,8 @@ class SummaryAgent:
     
     """
 
-    def __init__(self, model: str=settings.default_model):
-
+    def __init__(self, model: str="qwen2.5"):
+        # 使用直接的默认值而不是Settings.default_model
         logger.info(f"正在初始化Summary-Agent模型：{model}")
         self.model = model
     
@@ -50,7 +50,7 @@ class SummaryAgent:
 
     def run_stream(self, messages: List[Dict[str, Any]]):
         
-        logger.info("调用Summary-Agent")
+        logger.info(f"调用Summary-Agent:{messages}")
         
         ollama_messages = [
             {
