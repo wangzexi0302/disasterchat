@@ -694,7 +694,6 @@ async def send_message(
                     else:
                         sample_index = redis_client.get(session_id)
                         sample_index = sample_index.decode('utf-8')
-
                     logger.info(f"上传的图片是第{sample_index}个样例")
 
 
