@@ -134,7 +134,7 @@ reference_images = [
 # 将 默认的sample_index 存入 Redis
 sample_index = 0
 redis_key = "sample_index"
-redis_client.set(redis_key, sample_index)
+redis_client.set(redis_key, sample_index) 
 
 
 # 启动事件：创建表结构（生产环境建议使用 Alembic 迁移，开发环境可直接建表）
@@ -552,6 +552,7 @@ async def send_message(
                 ]
             }]
             logger.info(f"多模态 message: {llm_messages}")
+            llm_messages = [{"role": request.message.role, "content": text_content}]
         else:
             llm_messages = [{"role": request.message.role, "content": text_content}]
 
