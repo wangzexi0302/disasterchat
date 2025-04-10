@@ -36,17 +36,8 @@ logger = logging.getLogger(__name__)  # 使用模块级 logger
 # 异步锁，用于避免资源竞争
 response_lock = asyncio.Lock()
 
-# Base.metadata.create_all(bind=engine)
-
-# 删除所有表（生产环境禁用！）
-# Base.metadata.drop_all(engine)
-
-# 重新创建表
-# Base.metadata.create_all(engine)
-
 # 初始化 Redis 客户端，用于缓存数据和实现异步操作
 redis_client = redis.Redis(host='localhost', port=6379, db=0)
-
 
 # 创建一个 FastAPI 的路由实例，设置路由前缀和标签
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -140,6 +131,11 @@ reference_images = [
     "test/assests/3/post.png",
     "test/assests/4/post.png"
 ]
+# 将 默认的sample_index 存入 Redis
+sample_index = 0
+redis_key = "sample_index"
+redis_client.set(redis_key, sample_index)
+
 
 # 启动事件：创建表结构（生产环境建议使用 Alembic 迁移，开发环境可直接建表）
 # @router.on_event("startup")
@@ -346,7 +342,7 @@ async def upload_image(type: str = Form(...), files: list[UploadFile] = File(...
         raise HTTPException(400, "未提供图片")
     image_ids = []
     upload_dir = "uploads"
-    sample_index = 0
+    
 
     # 1. 处理第一张图片（计算 sample_index）
     first_file = files[0]
@@ -389,15 +385,13 @@ async def upload_image(type: str = Form(...), files: list[UploadFile] = File(...
         sample_index = max_index + 1
         # 将 sample_index 存入 Redis
         redis_key = "sample_index"
-        redis_client.set(redis_key, sample_index)
+        redis_client.set(redis_key, sample_index,10)
 
     except Exception as e:
         logger.error(f"相似度计算失败：{str(e)}", exc_info=True)
         raise HTTPException(500, f"图片分析失败：{str(e)}")
     
 
-
-    
     # 检查上传目录是否存在，不存在则创建
     if not os.path.exists(upload_dir):
         loop = asyncio.get_running_loop()
