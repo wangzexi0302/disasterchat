@@ -51,7 +51,7 @@ class QAAgent:
                 messages = ollama_message
             )
             logger.info("成功获取QA-Agent响应")
-            return response.get("message",{}).get("content","")
+            return {'text':response.get("message",{}).get("content","")}
         except Exception as e:
             logger.error(f"QA-Agent推理失败！: {str(e)}", exc_info=True)
             return f"问题回答失败: {str(e)}"

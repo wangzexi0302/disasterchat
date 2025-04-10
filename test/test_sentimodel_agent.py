@@ -38,7 +38,7 @@ def test_sentimodel_agent():
     ]
     
     # 另一组测试消息 - 用于测试不同的意图识别
-    test_messages1 = [
+    test_messages = [
         {
             "role": "user",
             "content": "什么是地质灾害，飓风又是如何产生的。"
@@ -50,12 +50,17 @@ def test_sentimodel_agent():
     try:
         logger.info("测试建筑损毁评估意图:")
         full_response = ""
-        for chunk in agent.run(test_messages, pic_type, sample_index = 1):
+        (stream), image_list = agent.run(test_messages, pic_type, sample_index = 1)
+        for chunk in stream:
             # 只打印部分流式块以避免日志过多
             if len(full_response) == 0:
                 logger.info(f"收到第一个流式响应块: {chunk}")
             full_response += chunk
             print(chunk, end="", flush=True)  # 打印流式响应块
+
+        for image in image_list:
+            logger.info(f"流式响应图像: {image}")
+            print(image, flush=True)  # 打印图像
         
         logger.info(f"完整流式响应长度: {len(full_response)} 字符")
         # 显示前200个字符的响应预览

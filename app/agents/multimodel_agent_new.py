@@ -138,7 +138,7 @@ class MultiModalAgent:
 
             logger.info(f"成功获取多模态响应:{response}")
             
-            return response.get("message", {}).get("content", "")
+            return {'text':response.get("message", {}).get("content", "")}
         except Exception as e:
             logger.error(f"多模态推理失败: {str(e)}", exc_info=True)
             raise

@@ -669,7 +669,7 @@ async def send_message(
                     logger.info(f"上传的图片是第{sample_index}个样例")
 
 
-                    stream_response = sentimodel_agent.run(llm_messages, sample_index = sample_index)
+                    (stream_response), image_list = sentimodel_agent.run(llm_messages, sample_index = sample_index)
 
                     # # 调用大模型（假设为异步调用）
                     # if is_multimodal:
@@ -706,6 +706,22 @@ async def send_message(
                             }
                             # 发送SSE消息
                             yield f"data: {json.dumps(sse_chunk)}\n\n"
+
+                                        # 处理图片响应
+                    
+                        for image_path in image_list:
+                            # 构建完整的URL路径
+                            image_url = str(request_obj.url_for('static', path=image_path))
+                            image_id = generate_image_id(image_url)
+                            yield f"""data: {json.dumps({
+                                'message_id': assistant_message.id,
+                                'data': {
+                                    'done': False,
+                                    'image_url': image_url,
+                                    'image_id': image_id,
+                                    'type': 'post'
+                                }
+                            })}\n\n"""
 
                     async with db.begin() as final_transaction:
                         assistant_message.created_at = datetime.now(timezone.utc)

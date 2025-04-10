@@ -111,14 +111,15 @@ class SentiModelAgent:
             logger.error(f"调用意图识别Agent失败：{str(e)}", exc_info=True)
             raise
 
+           
+        image_list = []
         first_messages = first_response["message"]
 
         augmented_messages = ollama_messages.copy()
         augmented_messages.append(first_messages)
 
         print('first_messages:', first_messages)
-        
-
+     
         # 检查是否有工具调用
         if tool_calls := first_messages.get("tool_calls", None):
             logger.info(f"发现工具调用: {tool_calls}")
@@ -135,7 +136,11 @@ class SentiModelAgent:
                         logger.info(f"调用工具: {fn_name}, 参数: {fn_args}")
                         try:
                             # 执行工具函数并获取结果
-                            result = tool.execute(**fn_args)
+                            result_dict = tool.execute(**fn_args)
+
+                            result = result_dict.get('text', '')
+                            if 'images' in result_dict:
+                                image_list.extend(result_dict['images'])
                             
                             # 如果结果不是字符串，将其序列化为JSON
                             if not isinstance(result, str):
@@ -162,7 +167,7 @@ class SentiModelAgent:
         try:
             augmented_messages = augmented_messages[1:]
             summary_agent = SummaryAgent()
-            return summary_agent.run_stream(augmented_messages)
+            return summary_agent.run_stream(augmented_messages), image_list
         except Exception as e:
             logger.error(f"最终结果生成失败：{str(e)}", exc_info=True)
             return
