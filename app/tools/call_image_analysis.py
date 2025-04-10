@@ -11,7 +11,7 @@ class CallImageAnalysis(Tool):
 
     @property
     def name(self) -> str:
-        return "call_image_analysis"
+        return "call_image_analysis_agent"
     
     @property
     def description(self) -> str:
@@ -33,10 +33,9 @@ class CallImageAnalysis(Tool):
             }
         }
     
-    def execute(self, message: str, pic_type: str, **kwargs) -> str:
+    def execute(self, message: str, pic_type: str, sample_index: int = 0, **kwargs) -> str:
         """
         执行详细的灾害影像分析
-        
         Args:
             message: 用户的具体分析请求
             pic_type: 影像类型，可选值为 "pre"(灾前), "post"(灾后) 或 "both"(变化检测)
@@ -56,9 +55,9 @@ class CallImageAnalysis(Tool):
             result = agent.run([{
                 "role": 'user',
                 "content": message
-            }])
+            }], pic_type, sample_index)
             logger.info(f"图像分析完成{result}")
-            return result.get("message", {}).get("content", "分析完成，但未返回结果")
+            return result
         except Exception as e:
             logger.error(f"图像分析失败: {str(e)}", exc_info=True)
             return f"详细图像分析失败: {str(e)}"

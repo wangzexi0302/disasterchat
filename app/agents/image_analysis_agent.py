@@ -137,6 +137,7 @@ class ImageAnalysisAgent:
             }
             for msg in processed_messages
         ]
+        logger.info(f"image_agent用户输入消息：{user_messages}")
 
         # 解析起始点坐标
         text_msg = [msg["content"] for msg in processed_messages]
@@ -196,7 +197,7 @@ class ImageAnalysisAgent:
                 tools=tools,
                 # options={"tools": tools}
             )
-            logger.info("成功获取模型响应")
+            logger.info(f"成功获取模型响应:{response}")
         except Exception as e:
             logger.error(f"调用模型失败：{str(e)}", exc_info=True)
             raise
@@ -262,7 +263,7 @@ class ImageAnalysisAgent:
                 model=self.model,
                 messages=ollama_messages
             )
-            logger.info("成功获取最终结果")
+            logger.info(f"image_analysis_agent成功获取最终结果{answer_response}")
 
             image_result = []
             for res in tools_response:

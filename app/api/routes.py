@@ -668,7 +668,7 @@ async def send_message(
                     logger.info(f"上传的图片是第{sample_index}个样例")
 
 
-                    (stream_response), image_list = sentimodel_agent.run(llm_messages, sample_index = sample_index)
+                    (stream_response), image_list = sentimodel_agent.run(llm_messages, sample_index  = sample_index)
 
                     # # 调用大模型（假设为异步调用）
                     # if is_multimodal:

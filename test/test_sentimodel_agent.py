@@ -38,10 +38,17 @@ def test_sentimodel_agent():
     ]
     
     # 另一组测试消息 - 用于测试不同的意图识别
-    test_messages = [
+    test_messages1 = [
         {
             "role": "user",
             "content": "什么是地质灾害，飓风又是如何产生的。"
+        }
+    ]
+
+    test_messages = [
+        {
+            "role": "user",
+            "content": "综合判断房屋受灾情况"
         }
     ]
     
