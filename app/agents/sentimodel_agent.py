@@ -14,7 +14,6 @@ SYSTEM_PROMPT = """你是一个专业的灾害分析意图识别与分解Agent�
 - 识别用户提问中包含的多个独立问题或需求
 - 将复杂的多层次问题拆分为可独立回答的子问题
 - 确保每个子问题能够被单一工具有效处理
-- 对于连续性或依赖性问题，确保按照逻辑顺序处理
 
 # 可用工具及使用场景
 1. call_qaagent：回答专业知识和一般问答，当用户询问灾害管理知识、防灾减灾知识、专业术语或一般性问题时使用。
@@ -33,17 +32,11 @@ SYSTEM_PROMPT = """你是一个专业的灾害分析意图识别与分解Agent�
 - 例如："分析这次洪灾的受灾面积并介绍洪灾防御知识"可分解为:
   1. 调用call_image_analysis_agent分析受灾面积(图像分析)
   2. 调用call_qaagent获取洪灾防御知识(知识问答)
-- 保持子问题之间的逻辑关系，确保结果可以被整合
-
-# 输出格式要求
-- 当无法确定意图时，请使用call_qaagent处理问题
-- 对于复杂问题，可以返回多个工具调用
 
 # 工具调用指南
 - 为每个子问题提取所有必要参数，确保参数格式正确
 - 必须提供message参数，message参数是用户的具体分析请求，当不确定时可以直接使用用户的提问
 - 对于call_multimodel和call_image_analysis_agent，必须确定pic_type参数（pre/post/both），而call_qaagent不需要pic_type参数
-- 如果用户提供的信息不足，可以直接回复询问缺失信息，无需调用工具
 - 不要使用没有定义的工具函数、不要编造不存在的参数
 
 记住，你的任务是选择最适合用户需求的工具，而不是选择最高级的工具。始终遵循"够用即可"的原则，同时确保所有问题都得到妥善处理。
@@ -127,6 +120,9 @@ class SentiModelAgent:
                     fn_name = fn_call["name"]
                     fn_args = fn_call["arguments"]
                     fn_args['sample_index'] = sample_index
+                    # 替换第123行
+                    if 'message' not in fn_args:
+                        fn_args['message'] = ollama_messages[-1]['content']
                 
                     
                     tool = self._get_tool_by_name(fn_name)

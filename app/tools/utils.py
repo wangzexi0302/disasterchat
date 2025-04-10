@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 import base64
 import tempfile
+import os
+import uuid
 
 
 def print_mask_color(mask_path):
@@ -63,7 +65,7 @@ def load_image_as_base64(image_path):
         return None
 
 
-def save_image(image_data: np.ndarray):
+def save_image_ori(image_data: np.ndarray):
     """将图像数据保存为临时文件"""
     try:
         # 创建临时文件保存结果图像
@@ -73,3 +75,30 @@ def save_image(image_data: np.ndarray):
         return temp_path
     except Exception as e:
         raise ValueError("保存图像数据失败！")
+
+def save_image(image_data: np.ndarray):
+    """将图像数据保存到项目的test/temp文件夹"""
+    try:
+        # 获取项目根目录
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        
+        # 构造保存目录路径
+        save_dir = os.path.join(project_root, "test", "temp")
+        
+        # 确保目录存在
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # 生成唯一文件名
+        filename = f"{uuid.uuid4()}.jpg"
+        file_path = os.path.join(save_dir, filename)
+        
+        # 保存图像
+        success = cv2.imwrite(file_path, image_data)
+        if not success:
+            raise ValueError("图像写入失败")
+        
+        # 返回相对路径
+        relative_path = os.path.join("temp", filename).replace('\\', '/')
+        return relative_path
+    except Exception as e:
+        raise ValueError(f"保存图像数据失败：{str(e)}")

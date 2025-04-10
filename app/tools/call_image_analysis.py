@@ -33,7 +33,7 @@ class CallImageAnalysis(Tool):
             }
         }
     
-    def execute(self, message: str, pic_type: str, sample_index: int = 0, **kwargs) -> str:
+    def execute(self, message: str, pic_type: str = 'pre', sample_index: int = 0, **kwargs) -> str:
         """
         执行详细的灾害影像分析
         Args:

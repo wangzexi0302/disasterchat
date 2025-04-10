@@ -741,19 +741,19 @@ async def send_message(
                             # logger.info(f"流式回复内容: {content}")
 
                     
-                        for image_path in image_list:
-                            # 构建完整的URL路径
-                            image_url = str(request_obj.url_for('static', path=image_path))
-                            image_id = generate_image_id(image_url)
-                            yield f"""data: {json.dumps({
-                                'message_id': assistant_message.id,
-                                'data': {
-                                    'done': False,
-                                    'image_url': image_url,
-                                    'image_id': image_id,
-                                    'type': 'post'
-                                }
-                            })}\n\n"""
+                    for image_path in image_list:
+                        # 构建完整的URL路径
+                        image_url = str(request_obj.url_for('static', path=image_path))
+                        image_id = generate_image_id(image_url)
+                        yield f"""data: {json.dumps({
+                            'message_id': assistant_message.id,
+                            'data': {
+                                'done': False,
+                                'image_url': image_url,
+                                'image_id': image_id,
+                                'type': 'post'
+                            }
+                        })}\n\n"""
 
                     async with db.begin() as final_transaction:
                         assistant_message.created_at = datetime.now(timezone.utc)

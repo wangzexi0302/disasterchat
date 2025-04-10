@@ -91,7 +91,7 @@ class ImageAnalysisAgent:
         logger.info(f"消息处理完成，共有 {len(temp_files)} 个临时图像文件")
         return processed_messages, temp_files
 
-    def _task_processing(self, messages: List[Dict[str, str]], pic_type: str, sample_index: int, points_dict: dict = None):
+    def _task_processing(self, messages: List[Dict[str, str]], pic_type: str, sample_index: int, points_dict: dict = None, **kwargs):
         # 1. 从消息中获取遥感影像
         processed_messages, image_paths = self._process_messages(messages)
 
