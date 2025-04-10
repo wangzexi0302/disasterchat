@@ -50,11 +50,12 @@ def test_sentimodel_agent():
     try:
         logger.info("测试建筑损毁评估意图:")
         full_response = ""
-        for chunk in agent.run(test_messages, pic_type):
+        for chunk in agent.run(test_messages, pic_type, sample_index = 1):
             # 只打印部分流式块以避免日志过多
             if len(full_response) == 0:
                 logger.info(f"收到第一个流式响应块: {chunk}")
             full_response += chunk
+            print(chunk, end="", flush=True)  # 打印流式响应块
         
         logger.info(f"完整流式响应长度: {len(full_response)} 字符")
         # 显示前200个字符的响应预览

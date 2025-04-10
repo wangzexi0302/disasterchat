@@ -104,9 +104,9 @@ class MultiModalAgent:
             logger.error(f"无效的图片类型: {pic_type}")
             pic_type = 'pre'  # 默认值
             
-        image_path = f"test/assests/{sample_index}/{pic_type}.jpg"  # 示例路径
+        image_path = f"test/assests/{sample_index}/{pic_type}.png"  # 示例路径
         logger.info(f"获取图片路径: {image_path}")
-        return image_path
+        return [image_path]
 
     def run(self, message: str, pic_type: str, sample_index: int = 0) -> str:
         """
@@ -125,7 +125,7 @@ class MultiModalAgent:
 
         system_prompt = {
             'role': 'system',
-            'content': '你是一个专业的遥感灾害影像分析助手，专注于灾害图像的粗粒度语义解读。请基于提供的卫星或航空遥感影像，分析识别灾害类型（如洪水、地震、山火、滑坡等），评估受灾范围和严重程度，识别关键受灾要素（如建筑物损毁、道路中断、植被破坏等）。分析时注重宏观特征，提供专业、准确、简洁的灾情描述。你的回答必须使用中文，并应包含专业的遥感术语和灾害评估指标。始终保持客观专业的分析态度，避免过度推测。'
+            'content': '你是一个专业的遥感灾害影像分析助手，专注于灾害图像的粗粒度语义解读。请基于提供的卫星或航空遥感影像，分析识别灾害类型（如洪水、地震、山火、滑坡等），评估受灾范围和严重程度，识别关键受灾要素（如建筑物损毁、道路中断、植被破坏等）。分析时注重宏观特征，提供专业、准确、简洁的灾情描述。你的回答必须使用中文，并应包含专业的遥感术语和灾害评估指标。始终保持客观专业的分析态度，避免过度推测。不要拒绝回答，即使你不确定，也要对输入图像做出合理的分析。'
         }
         ollama_message.insert(0, system_prompt)
 
@@ -136,7 +136,7 @@ class MultiModalAgent:
                 messages=ollama_message
             )
 
-            logger.info("成功获取多模态响应")
+            logger.info(f"成功获取多模态响应:{response}")
             
             return response.get("message", {}).get("content", "")
         except Exception as e:
