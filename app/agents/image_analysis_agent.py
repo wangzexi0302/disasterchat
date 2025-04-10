@@ -91,7 +91,7 @@ class ImageAnalysisAgent:
         logger.info(f"消息处理完成，共有 {len(temp_files)} 个临时图像文件")
         return processed_messages, temp_files
 
-    def _task_processing(self, messages: List[Dict[str, str]], pic_type: str, sample_index: int):
+    def _task_processing(self, messages: List[Dict[str, str]], pic_type: str, sample_index: int, points_dict: dict = None):
         # 1. 从消息中获取遥感影像
         processed_messages, image_paths = self._process_messages(messages)
 
@@ -139,20 +139,20 @@ class ImageAnalysisAgent:
         ]
         logger.info(f"image_agent用户输入消息：{user_messages}")
 
-        # 解析起始点坐标
-        text_msg = [msg["content"] for msg in processed_messages]
-        text_msg = '\n'.join(text_msg)
+        # # 解析起始点坐标
+        # text_msg = [msg["content"] for msg in processed_messages]
+        # text_msg = '\n'.join(text_msg)
 
-        pattern = r'\{"pre"\s*:\s*\[.*?\],\s*"post"\s*:\s*\[.*?\]\}'
-        match = re.search(pattern, text_msg, re.DOTALL)
+        # pattern = r'\{"pre"\s*:\s*\[.*?\],\s*"post"\s*:\s*\[.*?\]\}'
+        # match = re.search(pattern, text_msg, re.DOTALL)
 
-        if match:
-            json_str = match.group(0)
-            points_dict = json.loads(json_str)
-            logger.info(f"起始点坐标为：{points_dict}")
-        else:
-            points_dict = {}
-            logger.info("未提供起始点坐标")
+        # if match:
+        #     json_str = match.group(0)
+        #     points_dict = json.loads(json_str)
+        #     logger.info(f"起始点坐标为：{points_dict}")
+        # else:
+        #     points_dict = {}
+        #     logger.info("未提供起始点坐标")
 
         # 参数信息
         parameter_message = {"role": "user",
@@ -251,9 +251,9 @@ class ImageAnalysisAgent:
 
         return ollama_messages, tools_response
 
-    def run(self, messages: List[Dict[str, str]], pic_type: str, sample_index: int = 0) -> Dict[str, Any]:
+    def run(self, messages: List[Dict[str, str]], pic_type: str, sample_index: int = 0, **kwargs) -> Dict[str, Any]:
         # 1-4. 调用工具处理任务
-        ollama_messages, tools_response = self._task_processing(messages, pic_type, sample_index)
+        ollama_messages, tools_response = self._task_processing(messages, pic_type, sample_index, **kwargs)
 
         # 5. 组织回答：非流式调用
         logger.info("生成最终回答")
