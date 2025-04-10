@@ -264,29 +264,18 @@ class ImageAnalysisAgent:
             )
             logger.info("成功获取最终结果")
 
-            # 构建回答信息
-            answer_message = {
-                "role": 'assistant',
-                "content": [
-                    {'type': 'text',
-                     'text': answer_response['message']['content']}
-                ],
-                "done": True
-            }
-
             image_result = []
             for res in tools_response:
                 for item in res['content']:
                     if isinstance(item, dict) and item.get("type") == "image":
                         image_path = item.get("image_data", "")
-                        # self.temp_files.append(image_path)
+                        # Create
                         # image_data = utils.load_image_as_base64(image_path)
                         # item['image_data'] = image_data
-                        item['image_data'] = image_path
-                        image_result.append(item)
-            answer_message['content'].extend(image_result)
+                        image_result.append(image_path)
 
-            return answer_message
+            return {'text':answer_response.get("message", {}).get("content", ""), 'images':image_result}
+
         except Exception as e:
             logger.error(f"结果生成失败：{str(e)}", exc_info=True)
             raise
