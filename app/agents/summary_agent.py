@@ -2,7 +2,7 @@ import logging
 from typing import Dict, List, Generator, Optional, Any
 import ollama
 from app.api.models import AssistantMessage
-from app.config import Settings
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
