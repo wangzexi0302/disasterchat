@@ -132,7 +132,7 @@ reference_images = [
     "test/assests/4/post.png"
 ]
 # 将 默认的sample_index 存入 Redis
-sample_index = 0
+sample_index = 1
 redis_key = "sample_index"
 redis_client.set(redis_key, sample_index) 
 
@@ -344,10 +344,47 @@ async def upload_image(type: str = Form(...), files: list[UploadFile] = File(...
     upload_dir = "uploads"
     
 
-    # 1. 处理第一张图片（计算 sample_index）
+    # 检查上传目录是否存在，不存在则创建
+    if not os.path.exists(upload_dir):
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, os.makedirs, upload_dir)
+
+    for file in files:
+        try:
+            # 生成保存路径
+            file_extension = file.filename.split('.')[-1]
+            save_path = os.path.join(upload_dir, f"{uuid.uuid4()}.{file_extension}")
+            # 异步写入文件
+            loop = asyncio.get_running_loop()
+            file_content = await file.read()
+            await loop.run_in_executor(None, lambda: open(save_path, "wb").write(file_content))
+            # 创建数据库记录
+            db_image = Image(
+                id=str(uuid.uuid4()),
+                file_path=save_path,
+                file_type=file.content_type,
+                type=type  # 新增字段存储 type 参数
+            )
+            db.add(db_image)
+            image_ids.append(db_image.id)
+        except Exception as e:
+            # 发生错误时进行回滚操作
+            await db.rollback()
+            raise HTTPException(500, f"上传图片时发生错误: {str(e)}")
+
+    try:
+        # 异步提交数据库事务
+        await db.commit()
+    except Exception as e:
+        # 数据库提交失败时进行回滚操作
+        await db.rollback()
+        raise HTTPException(500, f"保存图片信息到数据库时发生错误: {str(e)}")
+
+        # 1. 处理第一张图片（计算 sample_index）
     first_file = files[0]
     try:
         # 读取上传图片（添加通道和尺寸校验）
+        await first_file.seek(0)
         file_content = await first_file.read()
         nparr = np.frombuffer(file_content, np.uint8)
         uploaded_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -384,49 +421,11 @@ async def upload_image(type: str = Form(...), files: list[UploadFile] = File(...
         max_index = similarities.index(max(similarities))
         sample_index = max_index + 1
         # 将 sample_index 存入 Redis
-        redis_key = "sample_index"
-        redis_client.set(redis_key, sample_index,10)
+        redis_client.set(image_ids[0], sample_index,3600)
 
     except Exception as e:
         logger.error(f"相似度计算失败：{str(e)}", exc_info=True)
         raise HTTPException(500, f"图片分析失败：{str(e)}")
-    
-
-    # 检查上传目录是否存在，不存在则创建
-    if not os.path.exists(upload_dir):
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, os.makedirs, upload_dir)
-
-    for file in files:
-        try:
-            # 生成保存路径
-            file_extension = file.filename.split('.')[-1]
-            save_path = os.path.join(upload_dir, f"{uuid.uuid4()}.{file_extension}")
-            # 异步写入文件
-            loop = asyncio.get_running_loop()
-            file_content = await file.read()
-            await loop.run_in_executor(None, lambda: open(save_path, "wb").write(file_content))
-            # 创建数据库记录
-            db_image = Image(
-                id=str(uuid.uuid4()),
-                file_path=save_path,
-                file_type=file.content_type,
-                type=type  # 新增字段存储 type 参数
-            )
-            db.add(db_image)
-            image_ids.append(db_image.id)
-        except Exception as e:
-            # 发生错误时进行回滚操作
-            await db.rollback()
-            raise HTTPException(500, f"上传图片时发生错误: {str(e)}")
-
-    try:
-        # 异步提交数据库事务
-        await db.commit()
-    except Exception as e:
-        # 数据库提交失败时进行回滚操作
-        await db.rollback()
-        raise HTTPException(500, f"保存图片信息到数据库时发生错误: {str(e)}")
 
     return UploadImageResponse(
         status="success",
@@ -464,7 +463,7 @@ async def pause_session(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"暂停操作失败: {str(e)}"
         )
-    
+
 
 # 发送消息接口
 @router.post("/chat/send")
@@ -660,12 +659,18 @@ async def send_message(
                         db.add(assistant_message)
                         await db.commit()
 
-
-                    
-                    #判断图片是第几个样例，一般上传两张照片，判断第二张
-                    redis_key = "sample_index"
-                    sample_index=redis_client.get(redis_key)
-                    sample_index = sample_index.decode('utf-8')
+                    sample_index = 1
+                    if not redis_client.exists(session_id):
+                        for image_id in image_ids:
+                            #判断图片是第几个样例，一般上传两张照片，判断第二张
+                            redis_key = image_id
+                            if redis_client.exists(redis_key):
+                                # 获取 Redis 中的 sample_index
+                                sample_index = redis_client.get(redis_key)
+                                sample_index = sample_index.decode('utf-8')
+                                redis_client.set(session_id, sample_index,3600)
+                    else:
+                        sample_index = redis_client.get(session_id)
                     logger.info(f"上传的图片是第{sample_index}个样例")
 
 
@@ -682,7 +687,7 @@ async def send_message(
                         stream_response = async_generator_wrapper(stream_response)
 
                     async for chunk in stream_response:
-                        logger.info(f"原始 chunk: {chunk}")
+                        # logger.info(f"原始 chunk: {chunk}")
                         if not chunk:
                             continue
 
@@ -709,7 +714,7 @@ async def send_message(
                             }
                             # 发送SSE消息
                             yield f"data: {json.dumps(sse_chunk)}\n\n"
-                            logger.info(f"流式回复内容: {content}")
+                            # logger.info(f"流式回复内容: {content}")
 
                                         # 处理图片响应
                     
