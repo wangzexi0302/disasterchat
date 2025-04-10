@@ -72,7 +72,7 @@ class SummaryAgent:
             )
             logger.info("成功获取Summary-Agent的流式响应")
             for chunk in stream_response:
-                yield chunk.get("message",{}).get("content", "")
+                yield chunk
         except Exception as e:
             logger.error(f"Summary-Agent推理失败！: {str(e)}", exc_info=True)
             return

@@ -682,6 +682,9 @@ async def send_message(
                         stream_response = async_generator_wrapper(stream_response)
 
                     async for chunk in stream_response:
+                        logger.info(f"原始 chunk: {chunk}")
+                        if not chunk:
+                            continue
 
                         if redis_client.get(pause_flag_key):
                             logger.info(f"会话 {session_id} 收到暂停指令，终止流式回复")
@@ -706,6 +709,7 @@ async def send_message(
                             }
                             # 发送SSE消息
                             yield f"data: {json.dumps(sse_chunk)}\n\n"
+                            logger.info(f"流式回复内容: {content}")
 
                                         # 处理图片响应
                     
