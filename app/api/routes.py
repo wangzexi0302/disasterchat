@@ -26,7 +26,7 @@ import os
 import logging
 from sqlalchemy import select,delete,desc
 from app.api.templates import TEMPLATE_RESPONSES  # 导入模板响应配置
-
+from app.agents.sentimodel_agent import SentiModelAgent
 
 logger = logging.getLogger(__name__)  # 使用模块级 logger
 
@@ -51,6 +51,7 @@ router = APIRouter(prefix="/api", tags=["chat"])
 # 初始化 LLM 服务
 agent_service = AgentService()
 multimodal_agent = MultiModalAgent()
+sentimodel_agent = SentiModelAgent()
 
 # ======================
 # 1. 公共模型定义
@@ -599,12 +600,14 @@ async def send_message(
                     async with db.begin() as sub_transaction:
                         db.add(assistant_message)
                         await db.commit()
+                    
+                    stream_response = sentimodel_agent.run(llm_messages, model="qwen2.5")
 
-                    # 调用大模型（假设为异步调用）
-                    if is_multimodal:
-                        stream_response = multimodal_agent.run_stream(llm_messages, model="llava:latest")
-                    else:
-                        stream_response = agent_service.run_stream(llm_messages, model="qwen2.5")
+                    # # 调用大模型（假设为异步调用）
+                    # if is_multimodal:
+                    #     stream_response = multimodal_agent.run_stream(llm_messages, model="llava:latest")
+                    # else:
+                    #     stream_response = agent_service.run_stream(llm_messages, model="qwen2.5")
 
                     # 如果是同步生成器，包装为异步生成器
                     if not hasattr(stream_response, "__aiter__"):
