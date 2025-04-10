@@ -20,11 +20,16 @@ from fastapi.responses import StreamingResponse # 流式响应
 from app.api.models import ChatRequest, ChatResponse, VLChatMessage,ImageContent,TextContent,SendMessageRequest
 from app.agents.agent_service import AgentService
 from app.agents.multimodal_agent import MultiModalAgent 
+from app.agents.sentimodel_agent import SentiModelAgent
+
 from app.api.database.models import Base
 from app.api.database.db_setup import engine, create_tables
 import os 
 import logging
 from sqlalchemy import select,delete,desc
+import cv2
+import numpy as np
+from skimage.metrics import structural_similarity as ssim
 
 
 logger = logging.getLogger(__name__)  # 使用模块级 logger
@@ -50,6 +55,7 @@ router = APIRouter(prefix="/api", tags=["chat"])
 # 初始化 LLM 服务
 agent_service = AgentService()
 multimodal_agent = MultiModalAgent()
+sentimodel_agent = SentiModelAgent()
 
 # ======================
 # 1. 公共模型定义
@@ -128,6 +134,12 @@ PREDEFINED_TEMPLATES = [
     )
 ]
 
+# 定义三张参考图片的路径（对应 test/assets 下的 1、2、3 文件夹）
+reference_images = [
+    "test/assests/1/test_image_2.png",
+    "test/assests/2/test_image_3.png",
+    "test/assests/3/test_image_4.png"
+]
 
 # 启动事件：创建表结构（生产环境建议使用 Alembic 迁移，开发环境可直接建表）
 # @router.on_event("startup")
@@ -332,6 +344,58 @@ async def upload_image(type: str = Form(...), files: list[UploadFile] = File(...
         raise HTTPException(400, "未提供图片")
     image_ids = []
     upload_dir = "uploads"
+    sample_index = 0
+
+    # 1. 处理第一张图片（计算 sample_index）
+    first_file = files[0]
+    try:
+        # 读取上传图片（添加通道和尺寸校验）
+        file_content = await first_file.read()
+        nparr = np.frombuffer(file_content, np.uint8)
+        uploaded_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        similarities = []
+        if uploaded_image is None:
+            raise ValueError("上传图片解码失败，可能为损坏文件")
+        if len(uploaded_image.shape) == 2:  # 转为三通道
+            uploaded_image = cv2.cvtColor(uploaded_image, cv2.COLOR_GRAY2BGR)
+        height, width, _ = uploaded_image.shape
+        if height < 7 or width < 7:
+            raise ValueError(f"上传图片尺寸过小（{width}x{height}），需至少 7x7")
+
+        # 校验参考图片（添加通道转换）
+        for ref_path in reference_images:
+            ref_image = cv2.imread(ref_path)
+            if ref_image is None:
+                raise FileNotFoundError(f"参考图片损坏或路径错误：{ref_path}")
+            if len(ref_image.shape) == 2:  # 转为三通道
+                ref_image = cv2.cvtColor(ref_image, cv2.COLOR_GRAY2BGR)
+            ref_image = cv2.resize(ref_image, (width, height))  # 统一尺寸
+
+            # 计算 ssim（显式处理通道轴）
+            win_size = min(7, min(height, width))
+            if win_size % 2 == 0:  # 确保 win_size 为奇数
+                win_size -= 1
+            similarity = ssim(
+                uploaded_image, ref_image,
+                multichannel=True,
+                win_size=win_size,
+                channel_axis=2  # 显式指定通道轴（默认正确，但明确声明更安全）
+            )
+            similarities.append(similarity)
+
+        max_index = similarities.index(max(similarities))
+        sample_index = max_index + 1
+        # 将 sample_index 存入 Redis
+        redis_key = "sample_index"
+        redis_client.set(redis_key, sample_index)
+
+    except Exception as e:
+        logger.error(f"相似度计算失败：{str(e)}", exc_info=True)
+        raise HTTPException(500, f"图片分析失败：{str(e)}")
+    
+
+
+    
     # 检查上传目录是否存在，不存在则创建
     if not os.path.exists(upload_dir):
         loop = asyncio.get_running_loop()
@@ -480,6 +544,8 @@ async def send_message(
 
 
         # 构造LLM消息格式
+        # 图片类型
+        pic_type = "pre"
         llm_messages = []
         if is_multimodal:
             llm_messages = [{
@@ -955,9 +1021,17 @@ async def send_message(
                         db.add(assistant_message)
                         await db.commit()
 
+
+                    
+                    #判断图片是第几个样例，一般上传两张照片，判断第二张
+                    redis_key = "sample_index"
+                    sample_index=redis_client.get(redis_key)
+                    sample_index = sample_index.decode('utf-8')
+                    logger.info(f"上传的图片是第{sample_index}个样例")
+
                     # 调用大模型（假设为异步调用）
                     if is_multimodal:
-                        stream_response = multimodal_agent.run_stream(llm_messages, model="llava:latest")
+                        stream_response = sentimodel_agent.run(llm_messages,pic_type)
                     else:
                         stream_response = agent_service.run_stream(llm_messages, model="qwen2.5")
 

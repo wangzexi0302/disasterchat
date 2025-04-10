@@ -78,16 +78,12 @@ class SentiModelAgent:
         #添加系统提示
         system_message = {
             "role": "system",
-<<<<<<< HEAD
             "content": (
                 "你是一个专注于灾害管理和应急响应的AI助手。并且可以通过识别图片来分析图片中的灾害信息，"
                 "提供防灾减灾建议，以及获取灾害信息。如果用户的问题需要查询特定信息，"
                 "请使用提供的工具函数来获取信息。不要编造不存在的工具或函数。"
                 "请严格按照markdown的格式输出。"
             )
-=======
-            "content": "意图识别Agent的Prompt"
->>>>>>> c90fc095383ff1b2ab32ad4099076c36dc63cf08
         }
 
         ollama_messages.insert(0, system_message)
