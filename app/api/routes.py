@@ -21,7 +21,6 @@ from app.api.models import ChatRequest, ChatResponse, VLChatMessage,ImageContent
 from app.agents.agent_service import AgentService
 from app.agents.multimodal_agent import MultiModalAgent 
 from app.agents.sentimodel_agent import SentiModelAgent
-
 from app.api.database.models import Base
 from app.api.database.db_setup import engine, create_tables
 import os 
@@ -30,7 +29,7 @@ from sqlalchemy import select,delete,desc
 import cv2
 import numpy as np
 from skimage.metrics import structural_similarity as ssim
-from app.agents.sentimodel_agent import SentiModelAgent
+from app.api.templates import TEMPLATE_RESPONSES
 
 logger = logging.getLogger(__name__)  # 使用模块级 logger
 
