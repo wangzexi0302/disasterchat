@@ -12,7 +12,7 @@ from app.tools.area_calculation import AreaCalculation
 from app.config import Settings
 from app.vision_models import ChangeDetectionModel, SemanticSegmentationModel
 import os
-
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -91,18 +91,19 @@ class ImageAnalysisAgent:
         logger.info(f"消息处理完成，共有 {len(temp_files)} 个临时图像文件")
         return processed_messages, temp_files
 
-    def _task_processing(self, messages: List[Dict[str, str]]):
+    def _task_processing(self, messages: List[Dict[str, str]], pic_type: str, sample_index: int):
         # 1. 从消息中获取遥感影像
         processed_messages, image_paths = self._process_messages(messages)
 
-        # assert len(image_paths) >=2, "至少需要两张影像，一个受灾前影像，一个受灾后影像"
+        # assert pic_type == 'both', "需要两张影像，一个受灾前影像，一个受灾后影像"
+        # assert len(image_paths) >=2, "需要两张影像，一个受灾前影像，一个受灾后影像"
 
         # pre_image_path = image_paths[-2]
         # post_image_path = image_paths[-1]
 
         # demo数据
-        pre_image_path = os.path.join('demo_data', 'pre.png')
-        post_image_path = os.path.join('demo_data', 'post.png')
+        pre_image_path = os.path.join(f'test/assests/{sample_index}', 'pre.png')
+        post_image_path = os.path.join(f'test/assests/{sample_index}', 'post.png')
 
         # 2. 调用遥感影像分析模型
         logger.info(f"运行变化检测模型...")
@@ -112,7 +113,7 @@ class ImageAnalysisAgent:
         # cd_mask_png = cd_result['change_map']
 
         # demo数据
-        cd_mask_png_path = os.path.join('demo_data', 'change_detection_mask.png')
+        cd_mask_png_path = os.path.join(f'test/assests/{sample_index}', 'cd_mask.png')
 
         logger.info(f"运行语义分割模型...")
         # ss = SemanticSegmentationModel(model_path='...', device='cuda')
@@ -122,8 +123,8 @@ class ImageAnalysisAgent:
         # ss_post_mask_png = ss_result['segmented_image']
 
         # demo数据
-        ss_pre_mask_png = os.path.join('demo_data', 'pre_segmentation_mask.png')
-        ss_post_mask_png = os.path.join('demo_data', 'post_segmentation_mask.png')
+        ss_pre_mask_png = os.path.join(f'test/assests/{sample_index}', 'pre_segmentation_mask.png')
+        ss_post_mask_png = os.path.join(f'test/assests/{sample_index}', 'post_segmentation_mask.png')
 
         # 3. 对用户意图进行分析
         logger.info("运行意图分析模型，调用遥感图像后处理工具")
@@ -136,6 +137,22 @@ class ImageAnalysisAgent:
             }
             for msg in processed_messages
         ]
+
+        # 解析起始点坐标
+        text_msg = [msg["content"] for msg in processed_messages]
+        text_msg = '\n'.join(text_msg)
+
+        pattern = r'\{"pre"\s*:\s*\[.*?\],\s*"post"\s*:\s*\[.*?\]\}'
+        match = re.search(pattern, text_msg, re.DOTALL)
+
+        if match:
+            json_str = match.group(0)
+            points_dict = json.loads(json_str)
+            logger.info(f"起始点坐标为：{points_dict}")
+        else:
+            points_dict = {}
+            logger.info("未提供起始点坐标")
+
         # 参数信息
         parameter_message = {"role": "user",
                              "content": f"""可提供给你的参数包括：{{
@@ -144,8 +161,18 @@ class ImageAnalysisAgent:
                                 "变化检测掩码图": "change_detection_mask_path: {cd_mask_png_path}",
                                 "灾前语义分割掩码图": "pre_segmentation_mask_path: {ss_pre_mask_png}",
                                 "灾后语义分割掩码图": "post_segmentation_mask_path: {ss_post_mask_png}",
-                                "用户提供的起始点坐标": "point_A: [400, 600]",
-                                "用户提供的起始点坐标": "point_B: [900, 1000]"}}"""}
+                                """}
+
+        # "灾前遥感影像的起始点坐标": "point_A: [400, 600]",
+        # "灾前遥感影像的终止点坐标": "point_B: [900, 1000]"
+        if points_dict:
+            parameter_message["content"] += f"""
+                                            "灾前遥感影像的起始点坐标": "point_A: [{points_dict['pre'][0]['x']}, {points_dict['pre'][0]['y']}]",
+                                            "灾前遥感影像的终止点坐标": "point_B: [{points_dict['pre'][1]['x']}, {points_dict['pre'][1]['y']}]",
+                                            "灾后遥感影像的起始点坐标": "point_A: [{points_dict['post'][0]['x']}, {points_dict['post'][0]['y']}]",
+                                            "灾后遥感影像的终止点坐标": "point_B: [{points_dict['post'][1]['x']}, {points_dict['post'][1]['y']}]"}}
+                                            """
+
         # 系统提示
         system_message = {
             "role": "system",
@@ -223,9 +250,9 @@ class ImageAnalysisAgent:
 
         return ollama_messages, tools_response
 
-    def run(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
-            # 1-4. 调用工具处理任务
-        ollama_messages, tools_response = self._task_processing(messages)
+    def run(self, messages: List[Dict[str, str]], pic_type: str, sample_index: int = 0) -> Dict[str, Any]:
+        # 1-4. 调用工具处理任务
+        ollama_messages, tools_response = self._task_processing(messages, pic_type, sample_index)
 
         # 5. 组织回答：非流式调用
         logger.info("生成最终回答")
@@ -252,9 +279,10 @@ class ImageAnalysisAgent:
                 for item in res['content']:
                     if isinstance(item, dict) and item.get("type") == "image":
                         image_path = item.get("image_data", "")
-                        self.temp_files.append(image_path)
-                        image_data = utils.load_image_as_base64(image_path)
-                        item['image_data'] = image_data
+                        # self.temp_files.append(image_path)
+                        # image_data = utils.load_image_as_base64(image_path)
+                        # item['image_data'] = image_data
+                        item['image_data'] = image_path
                         image_result.append(item)
             answer_message['content'].extend(image_result)
 
@@ -273,9 +301,9 @@ class ImageAnalysisAgent:
                         logger.warning(f"删除临时文件 {file_path} 失败: {str(e)}")
             self.temp_files.clear()
 
-    def run_stream(self, messages: List[Dict[str, str]]) -> Generator[Dict[str, Any], None, None]:
+    def run_stream(self, messages: List[Dict[str, str]], pic_type: str, sample_index: int = 0) -> Generator[Dict[str, Any], None, None]:
         # 1-4. 调用工具处理任务
-        ollama_messages, tools_response = self._task_processing(messages)
+        ollama_messages, tools_response = self._task_processing(messages, pic_type, sample_index)
 
         # 5. 组织回答：流式调用
         logger.info("生成最终回答")
@@ -312,8 +340,10 @@ class ImageAnalysisAgent:
             for res in tools_response:
                 for item in res['content']:
                     if isinstance(item, dict) and item.get("type") == "image":
-                        image_data = utils.load_image_as_base64(item.get("image_data", ""))
-                        item['image_data'] = image_data
+                        # image_data = utils.load_image_as_base64(item.get("image_data", ""))
+                        # item['image_data'] = image_data
+                        image_path = item.get("image_data", "")
+                        item['image_data'] = image_path
                         image_result.append(item)
             answer_message['content'].extend(image_result)
             answer_message['done'] = True

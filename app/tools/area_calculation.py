@@ -191,7 +191,7 @@ class AreaCalculation(Tool):
         message = {"role": "tool",
                    "name": self.name,
                    "content": [
-                        {'type': 'text', 'text': f'{damage_area}', 'text_description': '灾后各类地物的受灾面积统计'},
+                        {'type': 'text', 'text': f'{damage_area}', 'text_description': '灾后各类地物的受灾面积统计（平方米）'},
                         {'type': 'image', 'image_data': f'{damage_img_path}', 'image_description': '灾后各类地物受灾情况可视化影像图'}
                         ]}
 
