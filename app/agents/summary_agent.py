@@ -12,6 +12,12 @@ class SummaryAgent:
     
     """
 
+    # 定义静态系统提示
+    SYSTEM_PROMPT = {
+        'role': 'system',
+        'content': '你是一位遥感灾害领域的总结专家。你的任务是根据用户的提问，综合分析所有其他专家提供的信息，提供一个全面、准确、权威的最终回答。确保回答简洁明了，重点突出，并针对灾害应急、灾情评估、灾害监测等遥感应用场景给出实用的见解。必须使用中文，如果有的agent给出了英文的回答，你需要将其翻译成中文再回答给用户。'
+    }
+
     def __init__(self, model: str="qwen2.5"):
         # 使用直接的默认值而不是Settings.default_model
         logger.info(f"正在初始化Summary-Agent模型：{model}")
@@ -29,12 +35,7 @@ class SummaryAgent:
             for msg in messages
         ]
 
-        prompt = {
-            'role': 'system',
-            'content': '这是Summary-Agent的prompt'
-        }
-
-        ollama_messages.insert(prompt, 0)
+        ollama_messages.insert(0, self.SYSTEM_PROMPT)
 
         try:
             response = ollama.chat(
@@ -60,12 +61,7 @@ class SummaryAgent:
             for msg in messages
         ]
 
-        system_prompt = {
-            'role': 'system',
-            'content': '这是Summary-Agent的prompt'
-        }
-
-        ollama_messages.insert(0, system_prompt)
+        ollama_messages.insert(0, self.SYSTEM_PROMPT)
 
         try:
 
