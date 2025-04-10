@@ -673,11 +673,14 @@ async def send_message(
                     sample_index = sample_index.decode('utf-8')
                     logger.info(f"上传的图片是第{sample_index}个样例")
 
-                    # 调用大模型（假设为异步调用）
-                    if is_multimodal:
-                        stream_response = sentimodel_agent.run(llm_messages,pic_type)
-                    else:
-                        stream_response = agent_service.run_stream(llm_messages, model="qwen2.5")
+
+                    stream_response = sentimodel_agent.run(llm_messages, sample_index = sample_index)
+
+                    # # 调用大模型（假设为异步调用）
+                    # if is_multimodal:
+                    #     stream_response = sentimodel_agent.run(llm_messages,pic_type)
+                    # else:
+                    #     stream_response = agent_service.run_stream(llm_messages, model="qwen2.5")
 
                     # 如果是同步生成器，包装为异步生成器
                     if not hasattr(stream_response, "__aiter__"):

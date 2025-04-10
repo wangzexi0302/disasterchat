@@ -32,7 +32,7 @@ class CallMultiModel(Tool):
             }
         }
     
-    def execute(self, message: str, pic_type: str, **kwargs) -> str:
+    def execute(self, message: str, pic_type: str = 'pre', sample_index: int = 0, **kwargs) -> str:
         """
         执行多模态模型分析
         
@@ -52,7 +52,7 @@ class CallMultiModel(Tool):
         
         agent = MultiModalAgent()
         try:
-            result = agent.run(message, pic_type)
+            result = agent.run(message, pic_type, sample_index)
             logger.info("多模态模型分析完成")
             return result
         except Exception as e:

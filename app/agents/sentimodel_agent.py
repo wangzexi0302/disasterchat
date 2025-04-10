@@ -75,7 +75,7 @@ class SentiModelAgent:
         logger.info(f"未找到函数：{name}")
         return None
     
-    def run(self, messages: List[Dict[str,Any]], pic_type: str = 'pre'):
+    def run(self, messages: List[Dict[str,Any]], pic_type: str = 'pre', sample_index: int = 0):
 
         logger.info("运行意图分析模型")
 
@@ -127,6 +127,7 @@ class SentiModelAgent:
                 if fn_call := tool_call.get("function"):
                     fn_name = fn_call["name"]
                     fn_args = fn_call["arguments"]
+                    fn_args['sample_index'] = sample_index
                 
                     
                     tool = self._get_tool_by_name(fn_name)

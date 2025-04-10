@@ -26,7 +26,7 @@ class CallQAAgent(Tool):
             }   
         }
     
-    def execute(self, message: str) -> str:
+    def execute(self, message: str, **kwargs) -> str:
         """
         执行问答功能
         

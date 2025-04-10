@@ -88,14 +88,34 @@ class MultiModalAgent:
         logger.info(f"消息处理完成，共有 {len(image_paths)} 个图片文件")
         return processed_messages, image_paths
 
-    def run(self, message: str, pic_type: str):
+
+    def _get_image_path(self, pic_type: str, sample_index: int) -> str:
+        """
+        根据图片类型获取图片路径
+
+        Args:
+            pic_type: 图片类型
+            sample_index: 样本索引
+
+        Returns:
+            图片路径
+        """
+        if pic_type not in ['pre', 'post', 'both']:
+            logger.error(f"无效的图片类型: {pic_type}")
+            pic_type = 'pre'  # 默认值
+            
+        image_path = f"test/assests/{sample_index}/{pic_type}.jpg"  # 示例路径
+        logger.info(f"获取图片路径: {image_path}")
+        return image_path
+
+    def run(self, message: str, pic_type: str, sample_index: int = 0) -> str:
         """
         执行多模态推理（非流式）
 
         """
         logger.info(f"运行多模态推理")
 
-        # image_paths = get_image_path_by_pictype(pic_type) #根据图片类型获取图片
+        image_paths = self._get_image_path(pic_type, sample_index) #根据图片类型获取图片
 
         ollama_message = [{
             'role': 'user',
@@ -105,9 +125,9 @@ class MultiModalAgent:
 
         system_prompt = {
             'role': 'system',
-            'content': '多模态模型的Prompt'
+            'content': '你是一个专业的遥感灾害影像分析助手，专注于灾害图像的粗粒度语义解读。请基于提供的卫星或航空遥感影像，分析识别灾害类型（如洪水、地震、山火、滑坡等），评估受灾范围和严重程度，识别关键受灾要素（如建筑物损毁、道路中断、植被破坏等）。分析时注重宏观特征，提供专业、准确、简洁的灾情描述。你的回答必须使用中文，并应包含专业的遥感术语和灾害评估指标。始终保持客观专业的分析态度，避免过度推测。'
         }
-        ollama.insert(0,system_prompt)
+        ollama_message.insert(0, system_prompt)
 
         try:
             logger.info("调用Ollama多模态模型")
