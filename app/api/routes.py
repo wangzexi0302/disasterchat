@@ -1,4 +1,5 @@
 import random
+import re
 from time import sleep
 import time
 from datetime import datetime,timezone
@@ -504,6 +505,27 @@ async def send_message(
         #打印图片
         logger.info(f"Received message: {text_content}{image_ids}")
 
+        # 解析起始点坐标
+        pattern = r'\{"pre"\s*:\s*\[.*?\],\s*"post"\s*:\s*\[.*?\]\}'
+        match = re.search(pattern, text_content, re.DOTALL)
+
+        if match:
+            json_str = match.group(0)
+            points_dict = json.loads(json_str)
+            logger.info(f"起始点坐标为：{points_dict}")
+            text_content = re.sub(pattern, '', text_content, flags=re.DOTALL).strip()
+            redis_client.set(f"points:{session_id}", json_str, 3600)  # 缓存起始点坐标
+        elif redis_client.exists(f"points:{session_id}"):
+            json_str = redis_client.get(f"points:{session_id}").decode('utf-8')
+            points_dict = json.loads(json_str)
+            logger.info(f"起始点坐标为：{points_dict}")
+        else:
+            points_dict = {}
+            logger.info("未提供起始点坐标")
+
+        
+
+
         # 数据库事务处理
         async with db.begin() as transaction:
             user_message = ChatMessage(
@@ -675,7 +697,7 @@ async def send_message(
                     logger.info(f"上传的图片是第{sample_index}个样例")
 
 
-                    (stream_response), image_list = sentimodel_agent.run(llm_messages, sample_index  = sample_index)
+                    (stream_response), image_list = sentimodel_agent.run(llm_messages, sample_index  = sample_index, points_dict = points_dict)
 
                     # # 调用大模型（假设为异步调用）
                     # if is_multimodal:
@@ -717,7 +739,6 @@ async def send_message(
                             yield f"data: {json.dumps(sse_chunk)}\n\n"
                             # logger.info(f"流式回复内容: {content}")
 
-                                        # 处理图片响应
                     
                         for image_path in image_list:
                             # 构建完整的URL路径

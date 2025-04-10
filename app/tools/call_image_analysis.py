@@ -55,7 +55,7 @@ class CallImageAnalysis(Tool):
             result = agent.run([{
                 "role": 'user',
                 "content": message
-            }], pic_type, sample_index)
+            }], pic_type, sample_index, **kwargs)
             logger.info(f"图像分析完成{result}")
             return result
         except Exception as e:

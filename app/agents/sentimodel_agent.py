@@ -25,14 +25,7 @@ SYSTEM_PROMPT = """你是一个专业的灾害分析意图识别与分解Agent�
 - 默认优先使用简单工具：除非用户明确要求精确分析，否则不要调用call_image_analysis_agent
 - 对于需要概述或灾害类型等高层信息的请求，优先使用call_multimodel
 - 对于不涉及图像分析的知识性问题，使用call_qaagent
-- 如果用户问题模糊或一般性，优先使用call_qaagent，避免不必要的复杂分析
-
-# 工具调用指南
-- 为每个子问题提取所有必要参数，确保参数格式正确
-- 调用每个工具时, 都需要提供message参数，message参数是用户的具体分析请求
-- 对于call_multimodel和call_image_analysis_agent，必须确定pic_type参数（pre/post/both），而call_qaagent不需要pic_type参数
-- 如果用户提供的信息不足，可以直接回复询问缺失信息，无需调用工具
-- 不要使用没有定义的工具函数、不要编造不存在的参数
+- 任何有关于连通性、点间通常状况、受灾面积、建筑物损伤等问题都可以使用call_image_analysis_agent
 
 # 多agent联合处理流程
 - 当识别到多个子问题时，为每个子问题独立选择合适的工具
@@ -45,6 +38,13 @@ SYSTEM_PROMPT = """你是一个专业的灾害分析意图识别与分解Agent�
 # 输出格式要求
 - 当无法确定意图时，请使用call_qaagent处理问题
 - 对于复杂问题，可以返回多个工具调用
+
+# 工具调用指南
+- 为每个子问题提取所有必要参数，确保参数格式正确
+- 必须提供message参数，message参数是用户的具体分析请求，当不确定时可以直接使用用户的提问
+- 对于call_multimodel和call_image_analysis_agent，必须确定pic_type参数（pre/post/both），而call_qaagent不需要pic_type参数
+- 如果用户提供的信息不足，可以直接回复询问缺失信息，无需调用工具
+- 不要使用没有定义的工具函数、不要编造不存在的参数
 
 记住，你的任务是选择最适合用户需求的工具，而不是选择最高级的工具。始终遵循"够用即可"的原则，同时确保所有问题都得到妥善处理。
 """
@@ -73,7 +73,7 @@ class SentiModelAgent:
         logger.info(f"未找到函数：{name}")
         return None
     
-    def run(self, messages: List[Dict[str,Any]], pic_type: str = 'pre', sample_index: int = 0):
+    def run(self, messages: List[Dict[str,Any]], pic_type: str = 'pre', sample_index: int = 0, **kwargs):
 
         logger.info("运行意图分析模型")
 
@@ -134,7 +134,7 @@ class SentiModelAgent:
                         logger.info(f"调用工具: {fn_name}, 参数: {fn_args}")
                         try:
                             # 执行工具函数并获取结果
-                            result_dict = tool.execute(**fn_args)
+                            result_dict = tool.execute(**fn_args, **kwargs)
 
                             result = result_dict.get('text', '')
                             if 'images' in result_dict:
