@@ -603,13 +603,39 @@ async def send_message(
                     
                     # 处理文本响应
                     if template_config.text:
-                        chunk_size = 5
-                        for i in range(0, len(template_config.text), chunk_size):
-                            chunk = template_config.text[i:i+chunk_size]
+                        # 记录上一个停顿点位置
+                        last_break = 0
+                        text = template_config.text
+                        
+                        while last_break < len(text):
+                            # 随机生成不同大小的文本块
+                            min_chunk = 1
+                            max_chunk = 4
+                            chunk_size = random.randint(min_chunk, max_chunk)
+                                
+                            end_pos = min(last_break + chunk_size, len(text))
+                            
+                            # 尝试在自然断点处停止（如标点符号）
+                            natural_break = False
+                            for i in range(min(chunk_size, 5)):
+                                if end_pos < len(text) and end_pos > 0:
+                                    if text[end_pos-1] in "，。！？,.!?;；:：" and end_pos > last_break:
+                                        natural_break = True
+                                        break
+                                    end_pos -= 1
+                            
+                            if not natural_break:
+                                end_pos = min(last_break + chunk_size, len(text))
+                            
+                            chunk = text[last_break:end_pos]
+                            if not chunk:  # 安全检查
+                                break
+                                
                             # 使用独立事务更新内容
                             async with db.begin() as update_transaction:
                                 assistant_message.content += chunk
                                 await db.commit()
+                                
                             yield f"""data: {json.dumps({
                                 'message_id': message_id,
                                 'data': {
@@ -617,8 +643,14 @@ async def send_message(
                                     'done': False
                                 }
                             })}\n\n"""
-                            await asyncio.sleep(0.5)
-                    
+                            
+                            # 随机生成等待时间
+                            # 标点符号后等待时间略长，模拟自然停顿
+                            wait_time = random.uniform(0.05, 0.15)
+                                
+                            await asyncio.sleep(wait_time)
+                            last_break = end_pos
+                                        
                     # 处理图片响应
                     for image_path in template_config.images:
                         # 构建完整的URL路径
